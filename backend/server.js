@@ -11,7 +11,7 @@ const mongoSanitize = require("express-mongo-sanitize");
 const xss = require("xss-clean");
 const compression = require("compression");
 const mongoose = require("mongoose");
-
+const pushRoutes = require("./routes/pushRoutes");
 const connectDB = require("./config/db");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const initializeSocket = require("./socket/socketHandler");
@@ -65,6 +65,7 @@ app.use(
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
+app.use("/api/push", pushRoutes);
 
 // Gzip compression
 app.use(compression());

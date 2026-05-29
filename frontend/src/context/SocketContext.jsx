@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "../hooks/useAuth";
-import notificationService from "/..services/notificationServices.js";
+import notificationService from "../services/notificationService";
 
 // Create Socket Context
 export const SocketContext = createContext(null);
@@ -14,10 +14,19 @@ export const SocketProvider = ({ children }) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const { user } = useAuth();
 
-  // Request notification permission once user is logged in
+  // 🔔 Auto-subscribe to push notifications when user logs in
   useEffect(() => {
     if (user) {
-      notificationService.requestPermission();
+      // Wait a moment for service worker to be ready
+      setTimeout(() => {
+        notificationService.subscribeToPush().then((success) => {
+          if (success) {
+            console.log("🔔 Push notifications active");
+          } else {
+            console.log("⚠️  Push notifications not enabled");
+          }
+        });
+      }, 1500);
     }
   }, [user]);
 
@@ -60,9 +69,10 @@ export const SocketProvider = ({ children }) => {
         setOnlineUsers((prev) => prev.filter((id) => id !== data.userId));
       });
 
-      // ===== REAL-TIME NOTIFICATIONS =====
+      // ===== IN-APP NOTIFICATIONS (when app is OPEN) =====
+      // Push notifications handle the "app closed" case via service worker
 
-      // New message notification (when tab hidden)
+      // New message notification (when tab hidden but app open)
       newSocket.on("new_message", (data) => {
         const message = data.message || data;
         const senderId =
@@ -92,7 +102,11 @@ export const SocketProvider = ({ children }) => {
 
       // Friend request accepted
       newSocket.on("friend_request_accepted", (data) => {
-        const name = data.user?.fullName || data.name || "Someone";
+        const name =
+          data.friend?.fullName ||
+          data.user?.fullName ||
+          data.name ||
+          "Someone";
         notificationService.showFriendAccepted(name);
       });
 

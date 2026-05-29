@@ -7,15 +7,14 @@ const API_BASE_URL =
 // Create Axios instance with default configuration
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000, // 10 second timeout
+  timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true, // Send cookies with requests
+  withCredentials: true,
 });
 
 // ---- REQUEST INTERCEPTOR ----
-// Automatically attach JWT token to every request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("talish_token");
@@ -30,52 +29,39 @@ api.interceptors.request.use(
 );
 
 // ---- RESPONSE INTERCEPTOR ----
-// Handle common response errors
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   (error) => {
     if (error.response) {
-      // Server responded with error status
       const { status, data } = error.response;
 
       switch (status) {
         case 401:
-          // Unauthorized - token expired or invalid
           console.warn("🔒 Unauthorized - Clearing token");
           localStorage.removeItem("talish_token");
           localStorage.removeItem("talish_user");
-          // Only redirect if not already on auth page
           if (window.location.pathname !== "/auth") {
             window.location.href = "/auth";
           }
           break;
-
         case 403:
           console.warn("🚫 Forbidden");
           break;
-
         case 404:
           console.warn("❓ Not found");
           break;
-
         case 429:
           console.warn("⏳ Too many requests");
           break;
-
         case 500:
           console.error("💥 Server error");
           break;
-
         default:
           console.error(`Error ${status}:`, data?.message);
       }
     } else if (error.request) {
-      // Request was made but no response received
       console.error("🌐 Network error - No response from server");
     } else {
-      // Something else happened
       console.error("❌ Error:", error.message);
     }
 
@@ -129,4 +115,12 @@ export const messageAPI = {
     api.delete(`/messages/${messageId}/everyone`),
   search: (params) => api.get("/messages/search", { params }),
 };
+
+// 🔔 Push Notification endpoints
+export const pushAPI = {
+  getVapidKey: () => api.get("/push/vapid-key"),
+  subscribe: (subscription) => api.post("/push/subscribe", { subscription }),
+  unsubscribe: (endpoint) => api.post("/push/unsubscribe", { endpoint }),
+};
+
 export default api;

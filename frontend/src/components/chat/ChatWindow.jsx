@@ -12,7 +12,7 @@ import { useChat } from "../../hooks/useChat";
 
 const ChatWindow = ({ chat, onBack }) => {
   const { user } = useAuth();
-  const { isUserOnline, emitTypingStart, emitTypingStop } = useSocket();
+  const { isUserOnline, emitTypingStart, emitTypingStop, socket } = useSocket();
   const {
     messages,
     setMessages,
@@ -23,6 +23,7 @@ const ChatWindow = ({ chat, onBack }) => {
     resetUnread,
     updateLastMessage,
     removeMessage,
+    markMessagesAutoDeleted,
   } = useChat();
 
   const messagesEndRef = useRef(null);
@@ -33,8 +34,7 @@ const ChatWindow = ({ chat, onBack }) => {
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
 
-  // Find the LAST message sent by current user that has been seen
-  // This is used to show "Seen" indicator only on the last seen message
+  // Find last seen own message
   const lastSeenOwnMessageId = (() => {
     const ownSeenMessages = messages.filter((m) => {
       const senderId = typeof m.sender === "object" ? m.sender._id : m.sender;
@@ -92,17 +92,60 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, chat?._id]);
 
-  // Send message
+  // 🔥 Listen for disappearing/deleted messages via socket
+  useEffect(() => {
+    if (!socket || !chat?._id) return;
+
+    const handleMessageDeleted = (data) => {
+      const incomingChatId =
+        typeof data.chatId === "object" ? data.chatId.toString() : data.chatId;
+      if (incomingChatId === chat._id) {
+        removeMessage(data.messageId);
+      }
+    };
+
+    socket.on("message_deleted", handleMessageDeleted);
+    return () => socket.off("message_deleted", handleMessageDeleted);
+  }, [socket, chat?._id, removeMessage]);
+
+  // 🔥 OPTIMISTIC SEND - Like WhatsApp (instant UI feedback)
   const handleSend = async (content) => {
+    // Create optimistic message immediately for instant UI update
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage = {
+      _id: tempId,
+      chat: chat._id,
+      sender: {
+        _id: user._id,
+        fullName: user.fullName,
+        username: user.username,
+        avatar: user.avatar,
+      },
+      content,
+      status: "sending",
+      createdAt: new Date().toISOString(),
+      isOptimistic: true,
+    };
+
+    // Add immediately to UI - sender sees message instantly
+    addMessage(optimisticMessage);
     setSending(true);
+
     try {
       const res = await messageAPI.send({
         chatId: chat._id,
         content,
       });
-      addMessage(res.data.data);
-      updateLastMessage(chat._id, res.data.data);
+      const realMessage = res.data.data;
+
+      // Replace optimistic message with real one
+      setMessages((prev) =>
+        prev.map((m) => (m._id === tempId ? realMessage : m)),
+      );
+      updateLastMessage(chat._id, realMessage);
     } catch (err) {
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((m) => m._id !== tempId));
       toast.error("Failed to send message");
     } finally {
       setSending(false);
@@ -162,7 +205,8 @@ const ChatWindow = ({ chat, onBack }) => {
       day: "numeric",
     });
   };
-  // Filter out deleted/disappeared messages BEFORE grouping
+
+  // Filter out deleted messages
   const visibleMessages = messages.filter((m) => !m.deletedForEveryone);
   const messageGroups = groupMessagesByDate(visibleMessages);
 
@@ -180,7 +224,7 @@ const ChatWindow = ({ chat, onBack }) => {
         onChatCleared={() => setMessages([])}
       />
 
-      {/* Messages — Themed Background */}
+      {/* Messages */}
       <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-2 relative"
@@ -188,7 +232,7 @@ const ChatWindow = ({ chat, onBack }) => {
           backgroundColor: "var(--color-bg)",
         }}
       >
-        {/* Decorative themed background pattern */}
+        {/* Decorative background */}
         <div
           className="absolute inset-0 pointer-events-none opacity-30"
           style={{
@@ -201,7 +245,7 @@ const ChatWindow = ({ chat, onBack }) => {
           }}
         />
 
-        {/* Content */}
+        {/* Content - z-0 so dropdown can overlay */}
         <div className="relative z-0">
           {loadingMessages ? (
             <div className="space-y-3 p-4">
@@ -295,12 +339,12 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
-      {/* Input */}
+      {/* Input - disabled removed so cursor stays focused even while sending */}
       <ChatInput
         onSend={handleSend}
         onTypingStart={handleTypingStart}
         onTypingStop={handleTypingStop}
-        disabled={sending}
+        disabled={false}
       />
     </div>
   );

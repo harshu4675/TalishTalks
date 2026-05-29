@@ -66,7 +66,18 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
+    // Push notification subscriptions (multiple devices per user)
+    pushSubscriptions: [
+      {
+        endpoint: String,
+        keys: {
+          p256dh: String,
+          auth: String,
+        },
+        userAgent: String,
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     // Last seen timestamp
     lastSeen: {
       type: Date,

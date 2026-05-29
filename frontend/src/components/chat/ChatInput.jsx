@@ -18,6 +18,13 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
     }
   }, [text]);
 
+  // Auto-focus on mount
+  useEffect(() => {
+    if (textareaRef.current && !disabled) {
+      textareaRef.current.focus();
+    }
+  }, [disabled]);
+
   const handleChange = (e) => {
     const value = e.target.value;
     setText(value);
@@ -47,6 +54,8 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
 
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
+      // 🔥 KEEP FOCUS - like WhatsApp
+      textareaRef.current.focus();
     }
   };
 
@@ -80,16 +89,16 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
           border: "1px solid var(--color-border)",
         }}
       >
-        {/* Emoji button */}
         <button
           className="p-2 flex-shrink-0 transition-colors"
           style={{ color: "var(--color-textMuted)" }}
           title="Emoji (coming soon)"
+          // 🔥 Prevent button taking focus
+          onMouseDown={(e) => e.preventDefault()}
         >
           <HiOutlineEmojiHappy className="text-xl" />
         </button>
 
-        {/* Textarea */}
         <textarea
           ref={textareaRef}
           value={text}
@@ -98,16 +107,18 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
           placeholder="Type a message..."
           disabled={disabled}
           rows={1}
+          autoFocus
           className="flex-1 bg-transparent text-sm resize-none outline-none max-h-[120px] py-2 scrollbar-thin"
           style={{
             color: "var(--color-text)",
           }}
         />
 
-        {/* Send button */}
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={handleSend}
+          // 🔥 Prevent button taking focus from textarea
+          onMouseDown={(e) => e.preventDefault()}
           disabled={!text.trim() || disabled}
           className="p-2.5 rounded-xl flex-shrink-0 transition-all duration-200"
           style={{
@@ -127,7 +138,7 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
       </div>
 
       <p
-        className="text-[10px] text-center mt-1.5"
+        className="text-[10px] text-center mt-1.5 hidden sm:block"
         style={{ color: "var(--color-textMuted)", opacity: 0.6 }}
       >
         Press{" "}

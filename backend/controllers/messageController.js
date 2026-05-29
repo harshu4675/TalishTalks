@@ -1,16 +1,7 @@
 const Message = require("../models/Message");
 const Chat = require("../models/Chat");
 
-// ============================================
-// @desc    Get messages in a chat
-// @route   GET /api/messages/:chatId
-// @access  Private
-// ============================================
-// ============================================
-// @desc    Get messages in a chat
-// @route   GET /api/messages/:chatId
-// @access  Private
-// ============================================
+const { sendPushToUser } = require("../utils/pushService");
 const getMessages = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -149,6 +140,22 @@ const sendMessage = async (req, res) => {
           },
         });
       }
+      // 🔔 Send push notification (works even when app is closed)
+      if (otherParticipantId) {
+        sendPushToUser(otherParticipantId.toString(), {
+          title: req.user.fullName,
+          body:
+            content.trim().length > 100
+              ? content.trim().substring(0, 100) + "..."
+              : content.trim(),
+          tag: `chat-${chatId}`,
+          data: {
+            type: "message",
+            chatId: chatId.toString(),
+            url: `/chat/${chatId}`,
+          },
+        });
+      }
     }
 
     return res.status(201).json({
@@ -228,28 +235,65 @@ const markSeen = async (req, res) => {
     await chat.save();
 
     // Handle auto-delete based on disappearing mode
-    if (chat.disappearingMessages?.enabled) {
+    // In markSeen function, REPLACE the disappearing block:
+    if (
+      chat.disappearingMessages?.mode &&
+      chat.disappearingMessages.mode !== "off"
+    ) {
       const messageIds = messagesToUpdate.map((m) => m._id);
+      const mode = chat.disappearingMessages.mode;
 
-      if (chat.disappearingMessages.mode === "on_seen") {
-        // Delete after 5 seconds
-        const deleteAt = new Date(Date.now() + 5 * 1000);
+      let deleteAt = null;
+      let delayMs = 0;
+
+      if (mode === "on_seen") {
+        delayMs = 5 * 1000; // 5 seconds
+        deleteAt = new Date(Date.now() + delayMs);
+      } else if (mode === "after_2min") {
+        delayMs = 2 * 60 * 1000; // 2 minutes
+        deleteAt = new Date(Date.now() + delayMs);
+      }
+
+      if (deleteAt) {
         await Message.updateMany(
           { _id: { $in: messageIds } },
           { $set: { autoDeleteAt: deleteAt } },
         );
+
+        // 🔥 Schedule actual deletion + emit to clients
+        const io = req.app.get("io");
+        setTimeout(async () => {
+          try {
+            await Message.updateMany(
+              { _id: { $in: messageIds } },
+              {
+                $set: {
+                  deletedForEveryone: true,
+                  content: "",
+                },
+              },
+            );
+
+            // Notify clients to remove messages from UI
+            if (io) {
+              messageIds.forEach((msgId) => {
+                io.to(chatId).emit("message_deleted", {
+                  chatId,
+                  messageId: msgId,
+                  disappeared: true,
+                });
+              });
+            }
+            console.log(
+              `🗑️  Auto-deleted ${messageIds.length} disappearing message(s)`,
+            );
+          } catch (err) {
+            console.error("Auto-delete error:", err.message);
+          }
+        }, delayMs);
+
         console.log(
-          `⏱️  Scheduled ${messageIds.length} message(s) to disappear in 5 seconds`,
-        );
-      } else if (chat.disappearingMessages.mode === "after_2min") {
-        // Delete after 2 minutes
-        const deleteAt = new Date(Date.now() + 2 * 60 * 1000);
-        await Message.updateMany(
-          { _id: { $in: messageIds } },
-          { $set: { autoDeleteAt: deleteAt } },
-        );
-        console.log(
-          `⏱️  Scheduled ${messageIds.length} message(s) to disappear in 2 minutes`,
+          `⏱️  Scheduled ${messageIds.length} message(s) to disappear in ${delayMs}ms`,
         );
       }
     }

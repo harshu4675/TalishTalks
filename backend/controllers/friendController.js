@@ -1,8 +1,9 @@
 const User = require("../models/User");
 const FriendRequest = require("../models/FriendRequest");
+const { sendPushToUser } = require("../utils/pushService");
 
 // ============================================
-// @desc    Send a friend request by username
+// @desc    Send a friend request
 // @route   POST /api/friends/request
 // @access  Private
 // ============================================
@@ -17,7 +18,6 @@ const sendFriendRequest = async (req, res) => {
       });
     }
 
-    // Find receiver by username
     const receiver = await User.findOne({
       username: username.toLowerCase().trim(),
     });
@@ -29,7 +29,6 @@ const sendFriendRequest = async (req, res) => {
       });
     }
 
-    // Cannot send request to yourself
     if (receiver._id.toString() === req.user._id.toString()) {
       return res.status(400).json({
         success: false,
@@ -37,7 +36,6 @@ const sendFriendRequest = async (req, res) => {
       });
     }
 
-    // Check if already friends
     const currentUser = await User.findById(req.user._id);
     if (currentUser.friends.includes(receiver._id)) {
       return res.status(400).json({
@@ -46,7 +44,6 @@ const sendFriendRequest = async (req, res) => {
       });
     }
 
-    // Check if any request already exists between these users
     const existingRequest = await FriendRequest.findOne({
       $or: [
         { sender: req.user._id, receiver: receiver._id },
@@ -68,14 +65,12 @@ const sendFriendRequest = async (req, res) => {
           });
         }
       } else if (existingRequest.status === "rejected") {
-        // Allow re-sending after rejection - update existing
         existingRequest.sender = req.user._id;
         existingRequest.receiver = receiver._id;
         existingRequest.status = "pending";
         await existingRequest.save();
       }
     } else {
-      // Create new friend request
       await FriendRequest.create({
         sender: req.user._id,
         receiver: receiver._id,
@@ -83,9 +78,9 @@ const sendFriendRequest = async (req, res) => {
       });
     }
 
-    // Emit real-time notification to receiver
+    // Real-time socket notification
     const io = req.app.get("io");
-    if (io && receiver.socketId) {
+    if (io) {
       io.to(receiver._id.toString()).emit("friend_request_received", {
         sender: {
           _id: req.user._id,
@@ -96,6 +91,17 @@ const sendFriendRequest = async (req, res) => {
         message: `${req.user.fullName} sent you a friend request!`,
       });
     }
+
+    // 🔔 Push notification (works even when app is closed)
+    sendPushToUser(receiver._id.toString(), {
+      title: "New Friend Request",
+      body: `${req.user.fullName} sent you a friend request`,
+      tag: "friend-request",
+      data: {
+        type: "friend-request",
+        url: "/",
+      },
+    });
 
     return res.status(201).json({
       success: true,
@@ -117,7 +123,6 @@ const sendFriendRequest = async (req, res) => {
 // ============================================
 const getFriendRequests = async (req, res) => {
   try {
-    // Get received pending requests
     const received = await FriendRequest.find({
       receiver: req.user._id,
       status: "pending",
@@ -125,7 +130,6 @@ const getFriendRequests = async (req, res) => {
       .populate("sender", "fullName username avatar about isOnline")
       .sort({ createdAt: -1 });
 
-    // Get sent pending requests
     const sent = await FriendRequest.find({
       sender: req.user._id,
       status: "pending",
@@ -172,7 +176,6 @@ const respondToRequest = async (req, res) => {
       });
     }
 
-    // Find the friend request
     const request = await FriendRequest.findById(requestId).populate(
       "sender receiver",
       "fullName username avatar socketId",
@@ -185,7 +188,6 @@ const respondToRequest = async (req, res) => {
       });
     }
 
-    // Verify the current user is the receiver
     if (request.receiver._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -193,7 +195,6 @@ const respondToRequest = async (req, res) => {
       });
     }
 
-    // Check if request is still pending
     if (request.status !== "pending") {
       return res.status(400).json({
         success: false,
@@ -204,11 +205,9 @@ const respondToRequest = async (req, res) => {
     const io = req.app.get("io");
 
     if (action === "accept") {
-      // Update request status
       request.status = "accepted";
       await request.save();
 
-      // Add each user to the other's friends list
       await User.findByIdAndUpdate(request.sender._id, {
         $addToSet: { friends: request.receiver._id },
       });
@@ -217,7 +216,7 @@ const respondToRequest = async (req, res) => {
         $addToSet: { friends: request.sender._id },
       });
 
-      // Notify sender that their request was accepted
+      // Socket notification
       if (io) {
         io.to(request.sender._id.toString()).emit("friend_request_accepted", {
           friend: {
@@ -230,6 +229,17 @@ const respondToRequest = async (req, res) => {
         });
       }
 
+      // 🔔 Push notification to sender
+      sendPushToUser(request.sender._id.toString(), {
+        title: "Friend Request Accepted 🎉",
+        body: `${request.receiver.fullName} accepted your friend request`,
+        tag: "friend-accepted",
+        data: {
+          type: "friend-accepted",
+          url: "/",
+        },
+      });
+
       return res.status(200).json({
         success: true,
         message: `You are now friends with @${request.sender.username} 🎉`,
@@ -241,10 +251,8 @@ const respondToRequest = async (req, res) => {
         },
       });
     } else {
-      // Reject - delete the request
       await FriendRequest.findByIdAndDelete(requestId);
 
-      // Optionally notify sender
       if (io) {
         io.to(request.sender._id.toString()).emit("friend_request_rejected", {
           userId: request.receiver._id,
@@ -315,7 +323,6 @@ const removeFriend = async (req, res) => {
       });
     }
 
-    // Remove from both users' friends lists
     await User.findByIdAndUpdate(req.user._id, {
       $pull: { friends: friendId },
     });
@@ -324,7 +331,6 @@ const removeFriend = async (req, res) => {
       $pull: { friends: req.user._id },
     });
 
-    // Delete any existing friend request between them
     await FriendRequest.deleteMany({
       $or: [
         { sender: req.user._id, receiver: friendId },
@@ -332,7 +338,6 @@ const removeFriend = async (req, res) => {
       ],
     });
 
-    // Notify the other user
     const io = req.app.get("io");
     if (io) {
       io.to(friendId).emit("friend_removed", {
@@ -370,7 +375,6 @@ const cancelFriendRequest = async (req, res) => {
       });
     }
 
-    // Verify the current user is the sender
     if (request.sender.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -380,7 +384,6 @@ const cancelFriendRequest = async (req, res) => {
 
     await FriendRequest.findByIdAndDelete(requestId);
 
-    // Notify receiver
     const io = req.app.get("io");
     if (io) {
       io.to(request.receiver.toString()).emit("friend_request_cancelled", {

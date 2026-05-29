@@ -7,9 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
+      injectRegister: "auto",
       includeAssets: ["favicon.ico", "apple-touch-icon.png"],
       manifest: {
-        name: "Talish Chat",
+        name: "Talish Talks",
         short_name: "Talish",
         description: "Real-time chat application",
         theme_color: "#7c3aed",
@@ -29,20 +33,10 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,mp3}"],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.(?:png|jpg|jpeg|svg|gif)$/,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "images-cache",
-              expiration: { maxEntries: 60, maxAgeSeconds: 2592000 },
-            },
-          },
-        ],
+      devOptions: {
+        enabled: true,
+        type: "module",
       },
-      devOptions: { enabled: true },
     }),
   ],
   server: {

@@ -202,8 +202,8 @@ const setDisappearing = async (req, res) => {
     }
 
     chat.disappearingMessages = {
+      mode: mode,
       enabled: mode !== "off",
-      mode,
     };
     await chat.save();
 
