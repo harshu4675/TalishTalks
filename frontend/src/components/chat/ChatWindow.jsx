@@ -202,7 +202,7 @@ const ChatWindow = ({ chat, onBack }) => {
         />
 
         {/* Content */}
-        <div className="relative z-10">
+        <div className="relative z-0">
           {loadingMessages ? (
             <div className="space-y-3 p-4">
               {[1, 2, 3, 4, 5].map((i) => (

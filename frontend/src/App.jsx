@@ -16,6 +16,7 @@ import LoadingScreen from "./components/common/LoadingScreen";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import SiteLock from "./components/common/SiteLock";
+import PWAInstallPrompt from "./components/common/PWAInstallPrompt";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
 import NotFound from "./pages/NotFound";
@@ -24,7 +25,6 @@ import "./styles/animations.css";
 
 function App() {
   const [showInitialLoader, setShowInitialLoader] = useState(true);
-  // ⚠️ ALWAYS start as locked - asks password on every reload
   const [siteUnlocked, setSiteUnlocked] = useState(false);
 
   useEffect(() => {
@@ -60,6 +60,7 @@ function App() {
                 <ChatProvider>
                   <ToastProvider>
                     <ToastNotifications />
+                    <PWAInstallPrompt />
                     <div className="App">
                       <Routes>
                         <Route path="/auth" element={<AuthPage />} />

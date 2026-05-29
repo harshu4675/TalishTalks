@@ -72,7 +72,7 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
 
   return (
     <div
-      className="backdrop-blur-md border-b p-3 flex items-center justify-between relative z-10"
+      className="backdrop-blur-md border-b p-3 flex items-center justify-between relative z-30"
       style={{
         backgroundColor: "var(--color-bgCard)",
         borderColor: "var(--color-border)",
@@ -165,24 +165,27 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
           <AnimatePresence>
             {showMenu && (
               <>
+                {/* Backdrop - FIXED z-index */}
                 <div
                   onClick={() => {
                     setShowMenu(false);
                     setShowDisappearMenu(false);
                   }}
-                  className="fixed inset-0 z-10"
+                  className="fixed inset-0 z-[90]"
                 />
+                {/* Dropdown - FIXED z-index */}
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: -5 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: -5 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-full mt-1 z-20 rounded-xl shadow-card-hover overflow-hidden min-w-[220px]"
+                  className="absolute right-0 top-full mt-1 z-[100] rounded-xl shadow-card-hover overflow-hidden min-w-[220px]"
                   style={{
                     backgroundColor: "var(--color-bgCard)",
                     border: "1px solid var(--color-border)",
                   }}
                 >
+                  {/* ... rest stays the same ... */}{" "}
                   <button
                     onClick={() => setShowDisappearMenu(!showDisappearMenu)}
                     className="w-full px-4 py-2.5 text-left text-sm flex items-center justify-between gap-2 transition-colors hover:bg-black/20"
@@ -203,7 +206,6 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                           : "2 min"}
                     </span>
                   </button>
-
                   <AnimatePresence>
                     {showDisappearMenu && (
                       <motion.div
@@ -257,7 +259,6 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                       </motion.div>
                     )}
                   </AnimatePresence>
-
                   <button
                     onClick={handleClearChat}
                     className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors border-t"

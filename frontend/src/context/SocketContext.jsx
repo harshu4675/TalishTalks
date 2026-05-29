@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "../hooks/useAuth";
+import notificationService from "/..services/notificationServices.js";
 
 // Create Socket Context
 export const SocketContext = createContext(null);
@@ -13,14 +14,19 @@ export const SocketProvider = ({ children }) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const { user } = useAuth();
 
+  // Request notification permission once user is logged in
+  useEffect(() => {
+    if (user) {
+      notificationService.requestPermission();
+    }
+  }, [user]);
+
   // Connect to socket when user logs in
   useEffect(() => {
     if (user) {
       const token = localStorage.getItem("talish_token");
-
       if (!token) return;
 
-      // Create socket connection
       const newSocket = io(SOCKET_URL, {
         auth: { token },
         transports: ["websocket", "polling"],
@@ -29,7 +35,6 @@ export const SocketProvider = ({ children }) => {
         reconnectionDelay: 1000,
       });
 
-      // Connection events
       newSocket.on("connect", () => {
         console.log("🟢 Socket connected:", newSocket.id);
         setIsConnected(true);
@@ -45,30 +50,60 @@ export const SocketProvider = ({ children }) => {
         setIsConnected(false);
       });
 
-      // Online status events
       newSocket.on("user_online", (data) => {
-        setOnlineUsers((prev) => {
-          if (!prev.includes(data.userId)) {
-            return [...prev, data.userId];
-          }
-          return prev;
-        });
+        setOnlineUsers((prev) =>
+          prev.includes(data.userId) ? prev : [...prev, data.userId],
+        );
       });
 
       newSocket.on("user_offline", (data) => {
         setOnlineUsers((prev) => prev.filter((id) => id !== data.userId));
       });
 
+      // ===== REAL-TIME NOTIFICATIONS =====
+
+      // New message notification (when tab hidden)
+      newSocket.on("new_message", (data) => {
+        const message = data.message || data;
+        const senderId =
+          typeof message.sender === "object"
+            ? message.sender._id
+            : message.sender;
+
+        // Don't notify for own messages
+        if (senderId === user._id || senderId === user.id) return;
+
+        const senderName =
+          message.sender?.fullName || data.senderName || "New message";
+        const content = message.content || "Sent you a message";
+        const chatId = message.chat || data.chatId;
+
+        notificationService.showMessage(senderName, content, chatId, () => {
+          window.location.href = `/chat/${chatId}`;
+        });
+      });
+
+      // Friend request received
+      newSocket.on("friend_request_received", (data) => {
+        const senderName =
+          data.sender?.fullName || data.senderName || "Someone";
+        notificationService.showFriendRequest(senderName);
+      });
+
+      // Friend request accepted
+      newSocket.on("friend_request_accepted", (data) => {
+        const name = data.user?.fullName || data.name || "Someone";
+        notificationService.showFriendAccepted(name);
+      });
+
       setSocket(newSocket);
 
-      // Cleanup on unmount or user change
       return () => {
         newSocket.close();
         setSocket(null);
         setIsConnected(false);
       };
     } else {
-      // No user, disconnect socket
       if (socket) {
         socket.close();
         setSocket(null);
@@ -78,55 +113,39 @@ export const SocketProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Check if a specific user is online
   const isUserOnline = useCallback(
-    (userId) => {
-      return onlineUsers.includes(userId);
-    },
+    (userId) => onlineUsers.includes(userId),
     [onlineUsers],
   );
 
-  // Emit typing start
   const emitTypingStart = useCallback(
     (chatId, receiverId) => {
-      if (socket) {
-        socket.emit("typing_start", { chatId, receiverId });
-      }
+      if (socket) socket.emit("typing_start", { chatId, receiverId });
     },
     [socket],
   );
 
-  // Emit typing stop
   const emitTypingStop = useCallback(
     (chatId, receiverId) => {
-      if (socket) {
-        socket.emit("typing_stop", { chatId, receiverId });
-      }
+      if (socket) socket.emit("typing_stop", { chatId, receiverId });
     },
     [socket],
   );
 
-  // Join a chat room
   const joinChat = useCallback(
     (chatId) => {
-      if (socket) {
-        socket.emit("join_chat", chatId);
-      }
+      if (socket) socket.emit("join_chat", chatId);
     },
     [socket],
   );
 
-  // Leave a chat room
   const leaveChat = useCallback(
     (chatId) => {
-      if (socket) {
-        socket.emit("leave_chat", chatId);
-      }
+      if (socket) socket.emit("leave_chat", chatId);
     },
     [socket],
   );
 
-  // Context value
   const value = {
     socket,
     isConnected,
