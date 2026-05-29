@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import InstallAppButton from "../common/InstallAppButton";
-import NotificationToggle from "../common//NotificationToggle";
+import NotificationToggle from "../common/NotificationToggle"; // ✅ Fixed double slash
 import {
   HiOutlineX,
   HiOutlineUser,
@@ -15,7 +15,6 @@ import toast from "react-hot-toast";
 import { useAuth } from "../../hooks/useAuth";
 import { userAPI } from "../../services/api";
 
-// Same hash function as SiteLock
 const hashPassword = (password) => {
   let hash = 0;
   for (let i = 0; i < password.length; i++) {
@@ -131,7 +130,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -140,7 +138,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
           />
 
-          {/* Modal Wrapper - FIXED MOBILE CENTERING */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -247,7 +244,7 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                 </button>
               </div>
 
-              {/* Content Area - FLEX-1 for proper scroll */}
+              {/* Content Area */}
               <div className="overflow-y-auto scrollbar-thin flex-1 min-h-0">
                 {/* PROFILE TAB */}
                 {activeTab === "profile" && (
@@ -342,29 +339,31 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                         {about.length}/150
                       </p>
                     </div>
+
+                    {/* ✅ MOVED INSIDE PROFILE TAB - Notification Toggle */}
+                    <div>
+                      <label
+                        className="block text-xs font-medium mb-1.5"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
+                        Notifications
+                      </label>
+                      <NotificationToggle />
+                    </div>
+
+                    {/* ✅ MOVED INSIDE PROFILE TAB - Install App Button */}
+                    <div>
+                      <label
+                        className="block text-xs font-medium mb-1.5"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
+                        App
+                      </label>
+                      <InstallAppButton variant="card" />
+                    </div>
                   </div>
                 )}
-                {/* Notification Toggle */}
-                <div>
-                  <label
-                    className="block text-xs font-medium mb-1.5"
-                    style={{ color: "var(--color-textMuted)" }}
-                  >
-                    Notifications
-                  </label>
-                  <NotificationToggle />
-                </div>
 
-                {/* Install App Button */}
-                <div>
-                  <label
-                    className="block text-xs font-medium mb-1.5"
-                    style={{ color: "var(--color-textMuted)" }}
-                  >
-                    App
-                  </label>
-                  <InstallAppButton variant="card" />
-                </div>
                 {/* PASSWORD TAB */}
                 {activeTab === "password" && (
                   <div className="p-4 sm:p-5 space-y-4">
@@ -535,7 +534,7 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                 )}
               </div>
 
-              {/* Footer (only for profile tab) */}
+              {/* Footer */}
               {activeTab === "profile" && (
                 <div
                   className="p-4 sm:p-5 border-t flex gap-2 flex-shrink-0"
