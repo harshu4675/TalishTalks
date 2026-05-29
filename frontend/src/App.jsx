@@ -11,6 +11,7 @@ import { ChatProvider } from "./context/ChatContext";
 import { ToastProvider } from "./context/ToastContext";
 import { FriendsProvider } from "./context/FriendsContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { PWAProvider } from "./context/PWAContext"; // 🔥 ADD THIS
 import ToastNotifications from "./components/common/Toast";
 import LoadingScreen from "./components/common/LoadingScreen";
 import ProtectedRoute from "./components/common/ProtectedRoute";
@@ -53,46 +54,49 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <Router>
-          <AuthProvider>
-            <SocketProvider>
-              <FriendsProvider>
-                <ChatProvider>
-                  <ToastProvider>
-                    <ToastNotifications />
-                    <PWAInstallPrompt />
-                    <div className="App">
-                      <Routes>
-                        <Route path="/auth" element={<AuthPage />} />
-                        <Route
-                          path="/"
-                          element={
-                            <ProtectedRoute>
-                              <ChatPage />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/chat/:chatId"
-                          element={
-                            <ProtectedRoute>
-                              <ChatPage />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route path="/404" element={<NotFound />} />
-                        <Route
-                          path="*"
-                          element={<Navigate to="/404" replace />}
-                        />
-                      </Routes>
-                    </div>
-                  </ToastProvider>
-                </ChatProvider>
-              </FriendsProvider>
-            </SocketProvider>
-          </AuthProvider>
-        </Router>
+        <PWAProvider>
+          {/* 🔥 Wrap everything */}
+          <Router>
+            <AuthProvider>
+              <SocketProvider>
+                <FriendsProvider>
+                  <ChatProvider>
+                    <ToastProvider>
+                      <ToastNotifications />
+                      <PWAInstallPrompt />
+                      <div className="App">
+                        <Routes>
+                          <Route path="/auth" element={<AuthPage />} />
+                          <Route
+                            path="/"
+                            element={
+                              <ProtectedRoute>
+                                <ChatPage />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/chat/:chatId"
+                            element={
+                              <ProtectedRoute>
+                                <ChatPage />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route path="/404" element={<NotFound />} />
+                          <Route
+                            path="*"
+                            element={<Navigate to="/404" replace />}
+                          />
+                        </Routes>
+                      </div>
+                    </ToastProvider>
+                  </ChatProvider>
+                </FriendsProvider>
+              </SocketProvider>
+            </AuthProvider>
+          </Router>
+        </PWAProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

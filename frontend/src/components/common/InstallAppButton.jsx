@@ -2,17 +2,12 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HiOutlineDownload, HiOutlineX, HiOutlineCheck } from "react-icons/hi";
 import toast from "react-hot-toast";
-import { usePWAInstall } from "../../hooks/usePWAInstall";
+import { usePWA } from "../../context/PWAContext"; // 🔥 CHANGED
 
-/**
- * Reusable Install App button - shows in sidebar, settings, etc.
- * Variants: "button" | "card" | "icon"
- */
 const InstallAppButton = ({ variant = "button", className = "" }) => {
-  const { isInstallable, isInstalled, installPWA } = usePWAInstall();
+  const { isInstallable, isInstalled, installPWA } = usePWA(); // 🔥 CHANGED
   const [showIOSHelp, setShowIOSHelp] = useState(false);
 
-  // Detect iOS
   const isIOS =
     /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
@@ -51,7 +46,6 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
   }
 
   const handleInstall = async () => {
-    // iOS doesn't support beforeinstallprompt
     if (isIOS) {
       setShowIOSHelp(true);
       return;
@@ -59,7 +53,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
 
     if (!isInstallable) {
       toast.error(
-        "App can't be installed right now. Try refreshing or use Chrome/Edge browser.",
+        "Install not available. Make sure you're using Chrome/Edge and the app isn't already installed.",
       );
       return;
     }
@@ -72,7 +66,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
     }
   };
 
-  // ===== CARD VARIANT (for sidebar/profile menu) =====
+  // ===== CARD VARIANT =====
   if (variant === "card") {
     return (
       <>
@@ -99,7 +93,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
           </div>
         </motion.button>
 
-        {/* iOS Install Instructions Modal */}
+        {/* iOS Help Modal */}
         <AnimatePresence>
           {showIOSHelp && (
             <>
@@ -154,9 +148,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
                         1
                       </span>
                       <span>
-                        Tap the <strong>Share</strong> button{" "}
-                        <span className="inline-block px-1">⎘</span> at the
-                        bottom of Safari
+                        Tap the <strong>Share</strong> button at the bottom
                       </span>
                     </li>
                     <li className="flex gap-3">
@@ -170,7 +162,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
                         2
                       </span>
                       <span>
-                        Scroll and tap <strong>"Add to Home Screen"</strong>
+                        Tap <strong>"Add to Home Screen"</strong>
                       </span>
                     </li>
                     <li className="flex gap-3">
@@ -184,7 +176,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
                         3
                       </span>
                       <span>
-                        Tap <strong>"Add"</strong> in the top-right corner
+                        Tap <strong>"Add"</strong> in the top-right
                       </span>
                     </li>
                   </ol>
@@ -204,7 +196,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
     );
   }
 
-  // ===== ICON VARIANT (small icon button for header) =====
+  // ===== ICON VARIANT =====
   if (variant === "icon") {
     return (
       <motion.button
@@ -219,7 +211,7 @@ const InstallAppButton = ({ variant = "button", className = "" }) => {
     );
   }
 
-  // ===== DEFAULT BUTTON VARIANT =====
+  // ===== DEFAULT BUTTON =====
   return (
     <motion.button
       whileHover={{ scale: 1.03 }}
