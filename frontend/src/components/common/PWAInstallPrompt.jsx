@@ -54,6 +54,7 @@ const PWAInstallPrompt = () => {
     const success = await notificationService.subscribeToPush();
     if (success) {
       toast.success("Notifications enabled! 🔔");
+      localStorage.setItem("notifications-enabled", "true");
     } else {
       toast.error("Permission denied. Enable in browser settings.");
     }
@@ -68,125 +69,183 @@ const PWAInstallPrompt = () => {
 
   return (
     <>
-      {/* Install Banner - FIXED OVERFLOW */}
+      {/* INSTALL POPUP - CENTERED MODAL */}
       <AnimatePresence>
         {showInstall && !isInstalled && (
-          <motion.div
-            initial={{ y: -150, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -150, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed left-0 right-0 z-[200] px-3 flex justify-center pointer-events-none"
-            style={{
-              top: "max(0.5rem, env(safe-area-inset-top))",
-            }}
-          >
-            <div
-              className="w-full max-w-sm rounded-xl shadow-2xl pointer-events-auto"
-              style={{
-                backgroundColor: "var(--color-bgCard)",
-                border: "1px solid var(--color-border)",
-              }}
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleDismissInstall}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[199]"
+            />
+
+            {/* Centered Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed inset-0 z-[200] flex items-center justify-center p-4 pointer-events-none"
             >
-              <div className="flex items-center gap-2 p-2.5">
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: "var(--color-primary)" }}
-                >
-                  <HiOutlineDownload className="text-white text-lg" />
+              <div
+                className="w-full max-w-xs rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
+                style={{
+                  backgroundColor: "var(--color-bgCard)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                {/* Close button */}
+                <div className="flex justify-end p-2">
+                  <button
+                    onClick={handleDismissInstall}
+                    className="p-1 rounded-lg"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    <HiOutlineX className="text-lg" />
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0 overflow-hidden">
-                  <p
-                    className="text-xs font-semibold leading-tight truncate"
+
+                {/* Content */}
+                <div className="px-5 pb-5 text-center">
+                  <div
+                    className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
+                    }}
+                  >
+                    <HiOutlineDownload className="text-white text-3xl" />
+                  </div>
+
+                  <h3
+                    className="text-base font-semibold mb-1"
                     style={{ color: "var(--color-text)" }}
                   >
                     Install Talish App
-                  </p>
+                  </h3>
                   <p
-                    className="text-[10px] leading-tight mt-0.5 truncate"
+                    className="text-xs mb-4"
                     style={{ color: "var(--color-textMuted)" }}
                   >
-                    Faster access & notifications
+                    Get a faster experience with notifications & offline access
                   </p>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleInstall}
+                      className="w-full py-2.5 text-white text-sm font-medium rounded-xl"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
+                      }}
+                    >
+                      Install Now
+                    </button>
+                    <button
+                      onClick={handleDismissInstall}
+                      className="w-full py-2 text-xs"
+                      style={{ color: "var(--color-textMuted)" }}
+                    >
+                      Maybe Later
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={handleInstall}
-                  className="px-2.5 py-1.5 text-white text-xs font-medium rounded-lg flex-shrink-0"
-                  style={{ backgroundColor: "var(--color-primary)" }}
-                >
-                  Install
-                </button>
-                <button
-                  onClick={handleDismissInstall}
-                  className="p-1 flex-shrink-0"
-                  style={{ color: "var(--color-textMuted)" }}
-                >
-                  <HiOutlineX className="text-base" />
-                </button>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
-      {/* Notification Banner - FIXED OVERFLOW */}
+      {/* NOTIFICATION POPUP - CENTERED MODAL */}
       <AnimatePresence>
         {showNotifPrompt && (
-          <motion.div
-            initial={{ y: -150, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -150, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed left-0 right-0 z-[200] px-3 flex justify-center pointer-events-none"
-            style={{
-              top: "max(0.5rem, env(safe-area-inset-top))",
-            }}
-          >
-            <div
-              className="w-full max-w-sm rounded-xl shadow-2xl pointer-events-auto"
-              style={{
-                backgroundColor: "var(--color-bgCard)",
-                border: "1px solid var(--color-border)",
-              }}
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleDismissNotif}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[199]"
+            />
+
+            {/* Centered Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed inset-0 z-[200] flex items-center justify-center p-4 pointer-events-none"
             >
-              <div className="flex items-center gap-2 p-2.5">
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: "var(--color-primary)" }}
-                >
-                  <HiOutlineBell className="text-white text-lg" />
+              <div
+                className="w-full max-w-xs rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
+                style={{
+                  backgroundColor: "var(--color-bgCard)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                {/* Close */}
+                <div className="flex justify-end p-2">
+                  <button
+                    onClick={handleDismissNotif}
+                    className="p-1 rounded-lg"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    <HiOutlineX className="text-lg" />
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0 overflow-hidden">
-                  <p
-                    className="text-xs font-semibold leading-tight truncate"
+
+                {/* Content */}
+                <div className="px-5 pb-5 text-center">
+                  <div
+                    className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
+                    }}
+                  >
+                    <HiOutlineBell className="text-white text-3xl" />
+                  </div>
+
+                  <h3
+                    className="text-base font-semibold mb-1"
                     style={{ color: "var(--color-text)" }}
                   >
                     Enable Notifications
-                  </p>
+                  </h3>
                   <p
-                    className="text-[10px] leading-tight mt-0.5 truncate"
+                    className="text-xs mb-4"
                     style={{ color: "var(--color-textMuted)" }}
                   >
-                    Get alerts when app is closed
+                    Get instant message alerts even when the app is closed
                   </p>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleEnableNotifications}
+                      className="w-full py-2.5 text-white text-sm font-medium rounded-xl"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
+                      }}
+                    >
+                      Enable Notifications
+                    </button>
+                    <button
+                      onClick={handleDismissNotif}
+                      className="w-full py-2 text-xs"
+                      style={{ color: "var(--color-textMuted)" }}
+                    >
+                      Not Now
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={handleEnableNotifications}
-                  className="px-2.5 py-1.5 text-white text-xs font-medium rounded-lg flex-shrink-0"
-                  style={{ backgroundColor: "var(--color-primary)" }}
-                >
-                  Enable
-                </button>
-                <button
-                  onClick={handleDismissNotif}
-                  className="p-1 flex-shrink-0"
-                  style={{ color: "var(--color-textMuted)" }}
-                >
-                  <HiOutlineX className="text-base" />
-                </button>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </>

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import InstallAppButton from "../common/InstallAppButton";
+import NotificationToggle from "../common//NotificationToggle";
 import {
   HiOutlineX,
   HiOutlineUser,
@@ -343,7 +344,25 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                     </div>
                   </div>
                 )}
-                <div className="pt-2">
+                {/* Notification Toggle */}
+                <div>
+                  <label
+                    className="block text-xs font-medium mb-1.5"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    Notifications
+                  </label>
+                  <NotificationToggle />
+                </div>
+
+                {/* Install App Button */}
+                <div>
+                  <label
+                    className="block text-xs font-medium mb-1.5"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    App
+                  </label>
                   <InstallAppButton variant="card" />
                 </div>
                 {/* PASSWORD TAB */}
