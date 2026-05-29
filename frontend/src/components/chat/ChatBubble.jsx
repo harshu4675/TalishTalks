@@ -1,10 +1,5 @@
 import React, { useState, useRef } from "react";
-import {
-  motion,
-  AnimatePresence,
-  useMotionValue,
-  useTransform,
-} from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   HiOutlineDotsVertical,
   HiOutlineTrash,
@@ -22,9 +17,11 @@ const ChatBubble = ({
   onReply,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
-  const x = useMotionValue(0);
-  const replyIconOpacity = useTransform(x, [0, 50, 100], [0, 0.5, 1]);
-  const replyIconScale = useTransform(x, [0, 50, 100], [0.5, 0.8, 1]);
+  const [dragX, setDragX] = useState(0);
+  const [showReplyHint, setShowReplyHint] = useState(false);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isDragging = useRef(false);
 
   if (message.deletedForEveryone) {
     return null;
@@ -40,7 +37,6 @@ const ChatBubble = ({
 
   const StatusIcon = () => {
     if (!isOwn) return null;
-
     if (message.status === "sending") {
       return (
         <div
@@ -68,43 +64,106 @@ const ChatBubble = ({
     return <HiCheck className="text-white/60 text-sm" title="Sent" />;
   };
 
-  // Swipe handler - drag right to reply
-  const handleDragEnd = (event, info) => {
-    if (info.offset.x > 80) {
-      // Triggered reply
+  // 🔥 NATIVE TOUCH HANDLERS - work better than framer-motion drag on mobile
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    isDragging.current = false;
+  };
+
+  const handleTouchMove = (e) => {
+    if (!touchStartX.current) return;
+
+    const currentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    const diffX = currentX - touchStartX.current;
+    const diffY = Math.abs(currentY - touchStartY.current);
+
+    // Only horizontal drag - if more vertical, ignore (let scroll work)
+    if (diffY > Math.abs(diffX)) {
+      return;
+    }
+
+    // 🔥 SWIPE LEFT for own messages (drag goes negative)
+    // 🔥 SWIPE RIGHT for other's messages (drag goes positive)
+    const validDrag = isOwn ? diffX < 0 : diffX > 0;
+
+    if (validDrag) {
+      isDragging.current = true;
+      const limitedDrag = Math.max(-100, Math.min(100, diffX));
+      setDragX(limitedDrag);
+
+      if (Math.abs(limitedDrag) > 60) {
+        setShowReplyHint(true);
+      } else {
+        setShowReplyHint(false);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (isDragging.current && Math.abs(dragX) > 60) {
+      // Trigger reply
       if (onReply) onReply(message);
     }
-    x.set(0);
+    setDragX(0);
+    setShowReplyHint(false);
+    isDragging.current = false;
+    touchStartX.current = 0;
+  };
+
+  // Double-click to reply (desktop)
+  const handleDoubleClick = () => {
+    if (onReply) onReply(message);
   };
 
   return (
-    <div className="flex flex-col relative">
-      {/* Swipe reply icon (appears when dragging) */}
-      <motion.div
-        style={{ opacity: replyIconOpacity, scale: replyIconScale }}
-        className={`absolute top-1/2 -translate-y-1/2 ${
-          isOwn ? "right-4" : "left-4"
-        } pointer-events-none z-0`}
+    <div className="flex flex-col relative overflow-hidden">
+      {/* Reply Icon (appears when swiping) */}
+      <div
+        className={`absolute top-1/2 -translate-y-1/2 transition-opacity ${
+          isOwn ? "right-2" : "left-2"
+        }`}
+        style={{
+          opacity: Math.abs(dragX) / 80,
+          pointerEvents: "none",
+        }}
       >
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: "var(--color-primary)" }}
+          className={`w-9 h-9 rounded-full flex items-center justify-center transition-transform ${
+            showReplyHint ? "scale-110" : "scale-90"
+          }`}
+          style={{
+            backgroundColor: showReplyHint
+              ? "var(--color-primary)"
+              : "var(--color-bgInput)",
+          }}
         >
-          <HiOutlineReply className="text-white text-base" />
+          <HiOutlineReply
+            className="text-base"
+            style={{
+              color: showReplyHint ? "white" : "var(--color-primary)",
+            }}
+          />
         </div>
-      </motion.div>
+      </div>
 
       <motion.div
-        drag="x"
-        dragConstraints={{ left: 0, right: 100 }}
-        dragElastic={0.2}
-        onDragEnd={handleDragEnd}
-        style={{ x }}
         initial={{ opacity: 0, y: 10, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className={`flex ${isOwn ? "justify-end" : "justify-start"} group px-1 relative z-10`}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onDoubleClick={handleDoubleClick}
+        style={{
+          transform: `translateX(${dragX}px)`,
+          transition: dragX === 0 ? "transform 0.3s ease-out" : "none",
+        }}
+        className={`flex ${
+          isOwn ? "justify-end" : "justify-start"
+        } group px-1 relative z-10`}
       >
         <div
           className={`flex items-end gap-2 max-w-[75%] ${
@@ -113,7 +172,7 @@ const ChatBubble = ({
         >
           <div className="relative">
             <div
-              className="px-3 py-2 rounded-2xl shadow-sm transition-all"
+              className="px-3 py-2 rounded-2xl shadow-sm transition-all select-none"
               style={{
                 background: isOwn
                   ? `linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)`
@@ -125,7 +184,7 @@ const ChatBubble = ({
                 opacity: message.isOptimistic ? 0.7 : 1,
               }}
             >
-              {/* 🔥 REPLY PREVIEW (if this message is replying to another) */}
+              {/* Reply Preview inside bubble */}
               {message.replyTo && (
                 <div
                   className="mb-1.5 p-2 rounded-lg cursor-pointer"
@@ -163,12 +222,10 @@ const ChatBubble = ({
                 </div>
               )}
 
-              {/* Message text */}
               <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                 {message.content}
               </p>
 
-              {/* Time + status */}
               <div
                 className="flex items-center gap-1.5 mt-1 text-[10px]"
                 style={{
@@ -182,7 +239,7 @@ const ChatBubble = ({
               </div>
             </div>
 
-            {/* Menu button (desktop hover) */}
+            {/* Menu button - Desktop hover */}
             <button
               onClick={() => setShowMenu(!showMenu)}
               className={`absolute top-1/2 -translate-y-1/2 ${
@@ -196,20 +253,17 @@ const ChatBubble = ({
               <HiOutlineDotsVertical className="text-sm" />
             </button>
 
-            {/* Mobile: long-press menu trigger (always visible small dot) */}
+            {/* Menu button - Mobile always visible */}
             <button
               onClick={() => setShowMenu(!showMenu)}
               className={`absolute top-1/2 -translate-y-1/2 ${
                 isOwn ? "-left-7" : "-right-7"
               } p-1 rounded-full md:hidden opacity-60`}
-              style={{
-                color: "var(--color-textMuted)",
-              }}
+              style={{ color: "var(--color-textMuted)" }}
             >
               <HiOutlineDotsVertical className="text-sm" />
             </button>
 
-            {/* Dropdown menu */}
             <AnimatePresence>
               {showMenu && (
                 <>
@@ -230,7 +284,6 @@ const ChatBubble = ({
                       border: "1px solid var(--color-border)",
                     }}
                   >
-                    {/* 🔥 REPLY OPTION */}
                     <button
                       onClick={() => {
                         if (onReply) onReply(message);
@@ -278,7 +331,6 @@ const ChatBubble = ({
         </div>
       </motion.div>
 
-      {/* "Seen" indicator */}
       {isOwn && isLastSeen && message.status === "seen" && (
         <motion.div
           initial={{ opacity: 0, y: -5 }}

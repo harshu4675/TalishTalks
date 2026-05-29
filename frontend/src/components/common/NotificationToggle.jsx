@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { HiOutlineBell, HiOutlineBellOff } from "react-icons/hi";
+import { HiOutlineBell, HiBellSlash } from "react-icons/hi2"; // 🔥 Use hi2 for HiBellSlash
 import toast from "react-hot-toast";
 import notificationService from "../../services/notificationService";
 
@@ -10,13 +10,10 @@ const NotificationToggle = () => {
   const [supported, setSupported] = useState(true);
 
   useEffect(() => {
-    // Check if notifications are supported
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
       setSupported(false);
       return;
     }
-
-    // Check current state
     checkSubscriptionStatus();
   }, []);
 
@@ -26,7 +23,6 @@ const NotificationToggle = () => {
         setEnabled(false);
         return;
       }
-
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
       setEnabled(!!subscription);
@@ -38,10 +34,8 @@ const NotificationToggle = () => {
 
   const handleToggle = async () => {
     setLoading(true);
-
     try {
       if (enabled) {
-        // Turn OFF
         const success = await notificationService.unsubscribeFromPush();
         if (success) {
           setEnabled(false);
@@ -51,7 +45,6 @@ const NotificationToggle = () => {
           toast.error("Failed to disable notifications");
         }
       } else {
-        // Turn ON
         const success = await notificationService.subscribeToPush();
         if (success) {
           setEnabled(true);
@@ -82,7 +75,7 @@ const NotificationToggle = () => {
           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: "var(--color-border)" }}
         >
-          <HiOutlineBellOff
+          <HiBellSlash
             className="text-lg"
             style={{ color: "var(--color-textMuted)" }}
           />
@@ -121,7 +114,7 @@ const NotificationToggle = () => {
         {enabled ? (
           <HiOutlineBell className="text-white text-lg" />
         ) : (
-          <HiOutlineBellOff
+          <HiBellSlash
             className="text-lg"
             style={{ color: "var(--color-textMuted)" }}
           />
