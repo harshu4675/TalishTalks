@@ -147,6 +147,23 @@ export const ChatProvider = ({ children }) => {
 
     const handleNewMessage = ({ chatId, message }) => {
       if (activeChat?._id === chatId) {
+        const senderId =
+          typeof message.sender === "object"
+            ? message.sender._id
+            : message.sender;
+
+        if (senderId === user?._id) {
+          setMessages((prev) => {
+            const exists = prev.some((m) => m._id === message._id);
+            if (exists) {
+              // Update existing
+              return prev.map((m) => (m._id === message._id ? message : m));
+            }
+            return prev; // Don't add - optimistic update handles it
+          });
+          return;
+        }
+
         addMessage(message);
       }
       updateLastMessage(chatId, message);

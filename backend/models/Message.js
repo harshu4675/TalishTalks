@@ -14,27 +14,16 @@ const messageSchema = new mongoose.Schema(
     },
     content: {
       type: String,
-      required: [true, "Message content is required"],
-      trim: true,
-      maxlength: [5000, "Message cannot exceed 5000 characters"],
-    },
-    type: {
-      type: String,
-      enum: ["text", "system"],
-      default: "text",
+      required: true,
     },
     status: {
       type: String,
-      enum: ["sent", "delivered", "seen"],
+      enum: ["sending", "sent", "delivered", "seen"],
       default: "sent",
     },
     seenAt: {
       type: Date,
       default: null,
-    },
-    deletedForEveryone: {
-      type: Boolean,
-      default: false,
     },
     deletedFor: [
       {
@@ -42,24 +31,22 @@ const messageSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    deletedForEveryone: {
+      type: Boolean,
+      default: false,
+    },
     autoDeleteAt: {
       type: Date,
       default: null,
     },
+    // 🔥 NEW: Reply reference
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+      default: null,
+    },
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true },
 );
 
-// Index for fast message retrieval by chat
-messageSchema.index({ chat: 1, createdAt: -1 });
-
-// Index for auto-delete worker to find expired messages fast
-messageSchema.index({ autoDeleteAt: 1 });
-
-// ⚠️ REMOVED TTL index - we use background worker instead
-
-const Message = mongoose.model("Message", messageSchema);
-
-module.exports = Message;
+module.exports = mongoose.model("Message", messageSchema);

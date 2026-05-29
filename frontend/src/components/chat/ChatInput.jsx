@@ -1,8 +1,20 @@
 import React, { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
-import { HiOutlinePaperAirplane, HiOutlineEmojiHappy } from "react-icons/hi";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  HiOutlinePaperAirplane,
+  HiOutlineEmojiHappy,
+  HiOutlineX,
+  HiOutlineReply,
+} from "react-icons/hi";
 
-const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
+const ChatInput = ({
+  onSend,
+  onTypingStart,
+  onTypingStop,
+  disabled,
+  replyTo,
+  onCancelReply,
+}) => {
   const [text, setText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const textareaRef = useRef(null);
@@ -18,12 +30,11 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
     }
   }, [text]);
 
-  // Auto-focus on mount
   useEffect(() => {
     if (textareaRef.current && !disabled) {
       textareaRef.current.focus();
     }
-  }, [disabled]);
+  }, [disabled, replyTo]);
 
   const handleChange = (e) => {
     const value = e.target.value;
@@ -46,7 +57,7 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
 
-    onSend(trimmed);
+    onSend(trimmed, replyTo);
     setText("");
     setIsTyping(false);
     if (onTypingStop) onTypingStop();
@@ -54,7 +65,6 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
 
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      // 🔥 KEEP FOCUS - like WhatsApp
       textareaRef.current.focus();
     }
   };
@@ -76,87 +86,113 @@ const ChatInput = ({ onSend, onTypingStart, onTypingStop, disabled }) => {
 
   return (
     <div
-      className="p-3 border-t backdrop-blur-md"
+      className="border-t backdrop-blur-md"
       style={{
         backgroundColor: "var(--color-bgCard)",
         borderColor: "var(--color-border)",
       }}
     >
-      <div
-        className="flex items-end gap-2 rounded-2xl p-2 transition-colors"
-        style={{
-          backgroundColor: "var(--color-bgInput)",
-          border: "1px solid var(--color-border)",
-        }}
-      >
-        <button
-          className="p-2 flex-shrink-0 transition-colors"
-          style={{ color: "var(--color-textMuted)" }}
-          title="Emoji (coming soon)"
-          // 🔥 Prevent button taking focus
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          <HiOutlineEmojiHappy className="text-xl" />
-        </button>
+      {/* Reply Preview */}
+      <AnimatePresence>
+        {replyTo && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-b"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <div
+              className="flex items-center gap-2 p-2 mx-3 my-2 rounded-lg"
+              style={{
+                backgroundColor: "var(--color-bgInput)",
+                borderLeft: "3px solid var(--color-primary)",
+              }}
+            >
+              <HiOutlineReply
+                className="text-base flex-shrink-0"
+                style={{ color: "var(--color-primary)" }}
+              />
+              <div className="flex-1 min-w-0">
+                <p
+                  className="text-xs font-semibold truncate"
+                  style={{ color: "var(--color-primary)" }}
+                >
+                  {replyTo.sender?.fullName || "Replying to"}
+                </p>
+                <p
+                  className="text-xs truncate"
+                  style={{ color: "var(--color-textMuted)" }}
+                >
+                  {replyTo.content}
+                </p>
+              </div>
+              <button
+                onClick={onCancelReply}
+                className="p-1 rounded-md flex-shrink-0"
+                style={{ color: "var(--color-textMuted)" }}
+              >
+                <HiOutlineX className="text-base" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          disabled={disabled}
-          rows={1}
-          autoFocus
-          className="flex-1 bg-transparent text-sm resize-none outline-none max-h-[120px] py-2 scrollbar-thin"
+      <div className="p-3">
+        <div
+          className="flex items-end gap-2 rounded-2xl p-2 transition-colors"
           style={{
-            color: "var(--color-text)",
-          }}
-        />
-
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={handleSend}
-          // 🔥 Prevent button taking focus from textarea
-          onMouseDown={(e) => e.preventDefault()}
-          disabled={!text.trim() || disabled}
-          className="p-2.5 rounded-xl flex-shrink-0 transition-all duration-200"
-          style={{
-            background:
-              text.trim() && !disabled
-                ? `linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)`
-                : "var(--color-border)",
-            color:
-              text.trim() && !disabled ? "#FFFFFF" : "var(--color-textMuted)",
-            cursor: text.trim() && !disabled ? "pointer" : "not-allowed",
-            boxShadow:
-              text.trim() && !disabled ? "0 0 15px var(--color-glow)" : "none",
+            backgroundColor: "var(--color-bgInput)",
+            border: "1px solid var(--color-border)",
           }}
         >
-          <HiOutlinePaperAirplane className="text-lg -rotate-45" />
-        </motion.button>
+          <button
+            className="p-2 flex-shrink-0 transition-colors"
+            style={{ color: "var(--color-textMuted)" }}
+            title="Emoji (coming soon)"
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <HiOutlineEmojiHappy className="text-xl" />
+          </button>
+
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message..."
+            disabled={disabled}
+            rows={1}
+            autoFocus
+            className="flex-1 bg-transparent text-sm resize-none outline-none max-h-[120px] py-2 scrollbar-thin"
+            style={{ color: "var(--color-text)" }}
+          />
+
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={handleSend}
+            onMouseDown={(e) => e.preventDefault()}
+            disabled={!text.trim() || disabled}
+            className="p-2.5 rounded-xl flex-shrink-0 transition-all duration-200"
+            style={{
+              background:
+                text.trim() && !disabled
+                  ? `linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)`
+                  : "var(--color-border)",
+              color:
+                text.trim() && !disabled ? "#FFFFFF" : "var(--color-textMuted)",
+              cursor: text.trim() && !disabled ? "pointer" : "not-allowed",
+              boxShadow:
+                text.trim() && !disabled
+                  ? "0 0 15px var(--color-glow)"
+                  : "none",
+            }}
+          >
+            <HiOutlinePaperAirplane className="text-lg -rotate-45" />
+          </motion.button>
+        </div>
       </div>
-
-      <p
-        className="text-[10px] text-center mt-1.5 hidden sm:block"
-        style={{ color: "var(--color-textMuted)", opacity: 0.6 }}
-      >
-        Press{" "}
-        <kbd
-          className="px-1 py-0.5 rounded text-[9px]"
-          style={{ backgroundColor: "var(--color-bgInput)" }}
-        >
-          Enter
-        </kbd>{" "}
-        to send,{" "}
-        <kbd
-          className="px-1 py-0.5 rounded text-[9px]"
-          style={{ backgroundColor: "var(--color-bgInput)" }}
-        >
-          Shift+Enter
-        </kbd>{" "}
-        for new line
-      </p>
     </div>
   );
 };

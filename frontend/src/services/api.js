@@ -108,7 +108,7 @@ export const chatAPI = {
 // Message endpoints
 export const messageAPI = {
   get: (chatId, params) => api.get(`/messages/${chatId}`, { params }),
-  send: (data) => api.post("/messages/send", data),
+  send: (data) => api.post("/messages/send", data), // already accepts replyTo in data
   markSeen: (chatId) => api.put(`/messages/${chatId}/seen`),
   deleteForMe: (messageId) => api.delete(`/messages/${messageId}/me`),
   deleteForEveryone: (messageId) =>

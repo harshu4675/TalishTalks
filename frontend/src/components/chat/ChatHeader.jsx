@@ -42,11 +42,9 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
 
   const formatLastSeen = (date) => {
     if (!date) return "a long time ago";
-
     const d = new Date(date);
     const now = new Date();
     const diff = now.getTime() - d.getTime();
-
     const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
@@ -57,8 +55,6 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     if (days < 7) return `${days}d ago`;
-
-    // For older dates, show actual date
     return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -72,32 +68,32 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
 
   return (
     <div
-      className="backdrop-blur-md border-b p-3 flex items-center justify-between relative z-30"
+      className="backdrop-blur-md border-b px-2 py-2 sm:p-3 flex items-center justify-between sticky top-0 z-30 flex-shrink-0"
       style={{
         backgroundColor: "var(--color-bgCard)",
         borderColor: "var(--color-border)",
       }}
     >
       {/* Left: Back + User Info */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
         <button
           onClick={onBack}
-          className="p-2 rounded-lg transition-colors lg:hidden hover:bg-black/20"
+          className="p-1.5 sm:p-2 rounded-lg transition-colors lg:hidden hover:bg-black/20 flex-shrink-0"
           style={{ color: "var(--color-textMuted)" }}
         >
-          <HiOutlineArrowLeft className="text-lg" />
+          <HiOutlineArrowLeft className="text-xl" />
         </button>
 
         <div className="relative flex-shrink-0">
           <img
             src={otherUser.avatar}
             alt={otherUser.fullName}
-            className="w-10 h-10 rounded-full object-cover"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover"
             style={{ border: "1px solid var(--color-border)" }}
           />
           {isOnline && (
             <div
-              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full"
+              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full"
               style={{ border: `2px solid var(--color-bgCard)` }}
             />
           )}
@@ -105,13 +101,13 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
 
         <div className="flex-1 min-w-0">
           <p
-            className="text-sm font-semibold truncate"
+            className="text-sm font-semibold truncate leading-tight"
             style={{ color: "var(--color-text)" }}
           >
             {otherUser.fullName}
           </p>
           <p
-            className="text-xs truncate"
+            className="text-[11px] truncate leading-tight mt-0.5"
             style={{ color: "var(--color-textMuted)" }}
           >
             {isTyping ? (
@@ -131,13 +127,12 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-1">
-        {/* Disappearing indicator */}
+      <div className="flex items-center gap-1 flex-shrink-0">
         {disappearingEnabled && (
           <div
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
+            className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(var(--color-primary-rgb), 0.1)",
+              backgroundColor: "rgba(124, 58, 237, 0.1)",
               border: "1px solid var(--color-primary)",
               color: "var(--color-primary)",
             }}
@@ -146,17 +141,16 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
             }`}
           >
             <HiOutlineClock className="text-sm" />
-            <span className="hidden sm:inline">
+            <span className="hidden sm:inline text-[11px]">
               {disappearingMode === "on_seen" ? "On seen" : "2 min"}
             </span>
           </div>
         )}
 
-        {/* Menu button */}
         <div className="relative">
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="p-2 rounded-lg transition-colors hover:bg-black/20"
+            className="p-1.5 sm:p-2 rounded-lg transition-colors hover:bg-black/20"
             style={{ color: "var(--color-textMuted)" }}
           >
             <HiOutlineDotsVertical className="text-lg" />
@@ -165,7 +159,6 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
           <AnimatePresence>
             {showMenu && (
               <>
-                {/* Backdrop - FIXED z-index */}
                 <div
                   onClick={() => {
                     setShowMenu(false);
@@ -173,7 +166,6 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                   }}
                   className="fixed inset-0 z-[90]"
                 />
-                {/* Dropdown - FIXED z-index */}
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: -5 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -185,7 +177,6 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                     border: "1px solid var(--color-border)",
                   }}
                 >
-                  {/* ... rest stays the same ... */}{" "}
                   <button
                     onClick={() => setShowDisappearMenu(!showDisappearMenu)}
                     className="w-full px-4 py-2.5 text-left text-sm flex items-center justify-between gap-2 transition-colors hover:bg-black/20"
@@ -206,6 +197,7 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                           : "2 min"}
                     </span>
                   </button>
+
                   <AnimatePresence>
                     {showDisappearMenu && (
                       <motion.div
@@ -259,6 +251,7 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                       </motion.div>
                     )}
                   </AnimatePresence>
+
                   <button
                     onClick={handleClearChat}
                     className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors border-t"

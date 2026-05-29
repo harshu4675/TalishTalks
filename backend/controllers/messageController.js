@@ -1,7 +1,10 @@
 const Message = require("../models/Message");
 const Chat = require("../models/Chat");
-
 const { sendPushToUser } = require("../utils/pushService");
+
+// ============================================
+// @desc    Get messages in a chat
+// ============================================
 const getMessages = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -27,11 +30,10 @@ const getMessages = async (req, res) => {
     );
     const clearedAt = clearedEntry ? clearedEntry.clearedAt : null;
 
-    // Build query - EXCLUDE deletedForEveryone messages completely
     const query = {
       chat: chatId,
       deletedFor: { $ne: req.user._id },
-      deletedForEveryone: false, // ⚠️ Don't return deleted messages at all
+      deletedForEveryone: false,
     };
 
     if (clearedAt) {
@@ -40,6 +42,11 @@ const getMessages = async (req, res) => {
 
     const messages = await Message.find(query)
       .populate("sender", "fullName username avatar")
+      .populate({
+        path: "replyTo",
+        select: "content sender",
+        populate: { path: "sender", select: "fullName username" },
+      })
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -62,12 +69,10 @@ const getMessages = async (req, res) => {
 
 // ============================================
 // @desc    Send a new message
-// @route   POST /api/messages/send
-// @access  Private
 // ============================================
 const sendMessage = async (req, res) => {
   try {
-    const { chatId, content } = req.body;
+    const { chatId, content, replyTo } = req.body;
 
     if (!chatId || !content || !content.trim()) {
       return res.status(400).json({
@@ -91,21 +96,24 @@ const sendMessage = async (req, res) => {
       });
     }
 
-    // Create the message
+    // Create the message with reply reference
     let message = await Message.create({
       chat: chatId,
       sender: req.user._id,
       content: content.trim(),
       status: "sent",
+      replyTo: replyTo || null,
     });
 
-    // Populate sender info
-    message = await Message.findById(message._id).populate(
-      "sender",
-      "fullName username avatar",
-    );
+    // Populate sender + replyTo info
+    message = await Message.findById(message._id)
+      .populate("sender", "fullName username avatar")
+      .populate({
+        path: "replyTo",
+        select: "content sender",
+        populate: { path: "sender", select: "fullName username" },
+      });
 
-    // Update chat's last message + unread count for other participant
     const otherParticipantId = chat.participants.find(
       (p) => p.toString() !== req.user._id.toString(),
     );
@@ -118,17 +126,16 @@ const sendMessage = async (req, res) => {
     chat.lastMessage = message._id;
     await chat.save();
 
-    // Emit via Socket.IO to all participants in the chat room
     const io = req.app.get("io");
     if (io) {
-      // To the chat room (anyone viewing this chat)
-      io.to(chatId).emit("new_message", {
-        chatId,
-        message,
-      });
-
-      // Also send to other user's personal room (for notification even when not in chat)
+      // 🔥 FIX: Only emit to OTHER participant, not sender
+      // Sender already has the message from API response (optimistic update)
       if (otherParticipantId) {
+        io.to(otherParticipantId.toString()).emit("new_message", {
+          chatId,
+          message,
+        });
+
         io.to(otherParticipantId.toString()).emit("message_notification", {
           chatId,
           message,
@@ -139,9 +146,8 @@ const sendMessage = async (req, res) => {
             avatar: req.user.avatar,
           },
         });
-      }
-      // 🔔 Send push notification (works even when app is closed)
-      if (otherParticipantId) {
+
+        // 🔔 Push notification
         sendPushToUser(otherParticipantId.toString(), {
           title: req.user.fullName,
           body:
@@ -174,8 +180,6 @@ const sendMessage = async (req, res) => {
 
 // ============================================
 // @desc    Mark messages as seen
-// @route   PUT /api/messages/:chatId/seen
-// @access  Private
 // ============================================
 const markSeen = async (req, res) => {
   try {
@@ -198,7 +202,6 @@ const markSeen = async (req, res) => {
 
     const now = new Date();
 
-    // Find messages from OTHER user that are NOT seen yet
     const messagesToUpdate = await Message.find({
       chat: chatId,
       sender: { $ne: req.user._id },
@@ -207,7 +210,6 @@ const markSeen = async (req, res) => {
     });
 
     if (messagesToUpdate.length === 0) {
-      // Still reset unread count
       chat.unreadCount.set(req.user._id.toString(), 0);
       await chat.save();
       return res.status(200).json({
@@ -217,11 +219,8 @@ const markSeen = async (req, res) => {
       });
     }
 
-    // Update status to seen
     await Message.updateMany(
-      {
-        _id: { $in: messagesToUpdate.map((m) => m._id) },
-      },
+      { _id: { $in: messagesToUpdate.map((m) => m._id) } },
       {
         $set: {
           status: "seen",
@@ -230,12 +229,10 @@ const markSeen = async (req, res) => {
       },
     );
 
-    // Reset unread count
     chat.unreadCount.set(req.user._id.toString(), 0);
     await chat.save();
 
-    // Handle auto-delete based on disappearing mode
-    // In markSeen function, REPLACE the disappearing block:
+    // Auto-delete based on disappearing mode
     if (
       chat.disappearingMessages?.mode &&
       chat.disappearingMessages.mode !== "off"
@@ -247,10 +244,10 @@ const markSeen = async (req, res) => {
       let delayMs = 0;
 
       if (mode === "on_seen") {
-        delayMs = 5 * 1000; // 5 seconds
+        delayMs = 5 * 1000;
         deleteAt = new Date(Date.now() + delayMs);
       } else if (mode === "after_2min") {
-        delayMs = 2 * 60 * 1000; // 2 minutes
+        delayMs = 2 * 60 * 1000;
         deleteAt = new Date(Date.now() + delayMs);
       }
 
@@ -260,7 +257,6 @@ const markSeen = async (req, res) => {
           { $set: { autoDeleteAt: deleteAt } },
         );
 
-        // 🔥 Schedule actual deletion + emit to clients
         const io = req.app.get("io");
         setTimeout(async () => {
           try {
@@ -274,7 +270,6 @@ const markSeen = async (req, res) => {
               },
             );
 
-            // Notify clients to remove messages from UI
             if (io) {
               messageIds.forEach((msgId) => {
                 io.to(chatId).emit("message_deleted", {
@@ -298,7 +293,6 @@ const markSeen = async (req, res) => {
       }
     }
 
-    // Emit seen event via Socket.IO
     const io = req.app.get("io");
     if (io) {
       io.to(chatId).emit("messages_seen", {
@@ -321,10 +315,13 @@ const markSeen = async (req, res) => {
     });
   }
 };
+
+// ============================================
+// @desc    Delete for me
+// ============================================
 const deleteForMe = async (req, res) => {
   try {
     const { messageId } = req.params;
-
     const message = await Message.findById(messageId);
     if (!message) {
       return res.status(404).json({
@@ -332,13 +329,10 @@ const deleteForMe = async (req, res) => {
         message: "Message not found",
       });
     }
-
-    // Add user to deletedFor array
     if (!message.deletedFor.includes(req.user._id)) {
       message.deletedFor.push(req.user._id);
       await message.save();
     }
-
     return res.status(200).json({
       success: true,
       message: "Message deleted for you",
@@ -353,14 +347,11 @@ const deleteForMe = async (req, res) => {
 };
 
 // ============================================
-// @desc    Delete message for everyone
-// @route   DELETE /api/messages/:messageId/everyone
-// @access  Private
+// @desc    Delete for everyone
 // ============================================
 const deleteForEveryone = async (req, res) => {
   try {
     const { messageId } = req.params;
-
     const message = await Message.findById(messageId);
     if (!message) {
       return res.status(404).json({
@@ -368,8 +359,6 @@ const deleteForEveryone = async (req, res) => {
         message: "Message not found",
       });
     }
-
-    // Only sender can delete for everyone
     if (message.sender.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -381,7 +370,6 @@ const deleteForEveryone = async (req, res) => {
     message.content = "This message was deleted";
     await message.save();
 
-    // Notify all participants via Socket.IO
     const io = req.app.get("io");
     if (io) {
       io.to(message.chat.toString()).emit("message_deleted", {
@@ -405,13 +393,10 @@ const deleteForEveryone = async (req, res) => {
 
 // ============================================
 // @desc    Search messages
-// @route   GET /api/messages/search?q=query&chatId=...
-// @access  Private
 // ============================================
 const searchMessages = async (req, res) => {
   try {
     const { q, chatId } = req.query;
-
     if (!q || q.trim().length < 2) {
       return res.status(400).json({
         success: false,
@@ -426,7 +411,6 @@ const searchMessages = async (req, res) => {
     };
 
     if (chatId) {
-      // Search within specific chat
       const chat = await Chat.findById(chatId);
       if (!chat || !chat.participants.includes(req.user._id)) {
         return res.status(403).json({
@@ -436,7 +420,6 @@ const searchMessages = async (req, res) => {
       }
       query.chat = chatId;
     } else {
-      // Search in all user's chats
       const userChats = await Chat.find({
         participants: req.user._id,
       }).select("_id");

@@ -23,18 +23,17 @@ const ChatWindow = ({ chat, onBack }) => {
     resetUnread,
     updateLastMessage,
     removeMessage,
-    markMessagesAutoDeleted,
   } = useChat();
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const [sending, setSending] = useState(false);
+  const [replyTo, setReplyTo] = useState(null); // 🔥 NEW: Reply state
 
   const otherUser = chat.otherUser;
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
 
-  // Find last seen own message
   const lastSeenOwnMessageId = (() => {
     const ownSeenMessages = messages.filter((m) => {
       const senderId = typeof m.sender === "object" ? m.sender._id : m.sender;
@@ -47,7 +46,6 @@ const ChatWindow = ({ chat, onBack }) => {
       : null;
   })();
 
-  // Fetch messages when chat changes
   useEffect(() => {
     const fetchMessages = async () => {
       setLoadingMessages(true);
@@ -70,14 +68,12 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isTyping]);
 
-  // Mark messages as seen when new ones arrive
   useEffect(() => {
     if (!chat?._id || messages.length === 0) return;
 
@@ -92,7 +88,6 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, chat?._id]);
 
-  // 🔥 Listen for disappearing/deleted messages via socket
   useEffect(() => {
     if (!socket || !chat?._id) return;
 
@@ -108,10 +103,9 @@ const ChatWindow = ({ chat, onBack }) => {
     return () => socket.off("message_deleted", handleMessageDeleted);
   }, [socket, chat?._id, removeMessage]);
 
-  // 🔥 OPTIMISTIC SEND - Like WhatsApp (instant UI feedback)
-  const handleSend = async (content) => {
-    // Create optimistic message immediately for instant UI update
-    const tempId = `temp-${Date.now()}`;
+  // 🔥 FIXED: Optimistic send WITHOUT duplication
+  const handleSend = async (content, replyToData = null) => {
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
     const optimisticMessage = {
       _id: tempId,
       chat: chat._id,
@@ -125,26 +119,32 @@ const ChatWindow = ({ chat, onBack }) => {
       status: "sending",
       createdAt: new Date().toISOString(),
       isOptimistic: true,
+      replyTo: replyToData, // 🔥 Include reply data
     };
 
-    // Add immediately to UI - sender sees message instantly
     addMessage(optimisticMessage);
+    setReplyTo(null); // Clear reply
     setSending(true);
 
     try {
       const res = await messageAPI.send({
         chatId: chat._id,
         content,
+        replyTo: replyToData?._id || null, // Send reply ID to backend
       });
       const realMessage = res.data.data;
 
-      // Replace optimistic message with real one
-      setMessages((prev) =>
-        prev.map((m) => (m._id === tempId ? realMessage : m)),
-      );
+      // 🔥 FIX: Replace optimistic with real message
+      // The socket "new_message" will be ignored if message already exists
+      setMessages((prev) => {
+        // Remove ALL versions of this message (optimistic AND any socket echo)
+        const filtered = prev.filter(
+          (m) => m._id !== tempId && m._id !== realMessage._id,
+        );
+        return [...filtered, realMessage];
+      });
       updateLastMessage(chat._id, realMessage);
     } catch (err) {
-      // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m._id !== tempId));
       toast.error("Failed to send message");
     } finally {
@@ -174,7 +174,15 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
-  // Group messages by date
+  // 🔥 NEW: Handle reply
+  const handleReply = (message) => {
+    setReplyTo(message);
+  };
+
+  const handleCancelReply = () => {
+    setReplyTo(null);
+  };
+
   const groupMessagesByDate = (msgs) => {
     const groups = [];
     let currentDate = null;
@@ -206,7 +214,6 @@ const ChatWindow = ({ chat, onBack }) => {
     });
   };
 
-  // Filter out deleted messages
   const visibleMessages = messages.filter((m) => !m.deletedForEveryone);
   const messageGroups = groupMessagesByDate(visibleMessages);
 
@@ -215,7 +222,6 @@ const ChatWindow = ({ chat, onBack }) => {
       className="flex flex-col h-full"
       style={{ backgroundColor: "var(--color-bg)" }}
     >
-      {/* Header */}
       <ChatHeader
         chat={chat}
         isOnline={isOnline}
@@ -224,15 +230,11 @@ const ChatWindow = ({ chat, onBack }) => {
         onChatCleared={() => setMessages([])}
       />
 
-      {/* Messages */}
       <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-2 relative"
-        style={{
-          backgroundColor: "var(--color-bg)",
-        }}
+        style={{ backgroundColor: "var(--color-bg)" }}
       >
-        {/* Decorative background */}
         <div
           className="absolute inset-0 pointer-events-none opacity-30"
           style={{
@@ -245,16 +247,13 @@ const ChatWindow = ({ chat, onBack }) => {
           }}
         />
 
-        {/* Content - z-0 so dropdown can overlay */}
         <div className="relative z-0">
           {loadingMessages ? (
             <div className="space-y-3 p-4">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div
                   key={i}
-                  className={`flex ${
-                    i % 2 === 0 ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`h-10 skeleton ${
@@ -287,7 +286,6 @@ const ChatWindow = ({ chat, onBack }) => {
             <>
               {messageGroups.map((group) => (
                 <div key={group.date} className="space-y-2">
-                  {/* Date separator */}
                   <div className="flex items-center justify-center my-4">
                     <div
                       className="px-3 py-1 rounded-full text-[11px]"
@@ -301,7 +299,6 @@ const ChatWindow = ({ chat, onBack }) => {
                     </div>
                   </div>
 
-                  {/* Messages */}
                   <AnimatePresence>
                     {group.messages.map((message) => {
                       const senderId =
@@ -319,6 +316,7 @@ const ChatWindow = ({ chat, onBack }) => {
                           isLastSeen={isLastSeen}
                           onDeleteForMe={handleDeleteForMe}
                           onDeleteForEveryone={handleDeleteForEveryone}
+                          onReply={handleReply}
                         />
                       );
                     })}
@@ -326,7 +324,6 @@ const ChatWindow = ({ chat, onBack }) => {
                 </div>
               ))}
 
-              {/* Typing indicator */}
               <AnimatePresence>
                 {isTyping && (
                   <TypingIndicator name={otherUser.fullName.split(" ")[0]} />
@@ -339,12 +336,13 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
-      {/* Input - disabled removed so cursor stays focused even while sending */}
       <ChatInput
         onSend={handleSend}
         onTypingStart={handleTypingStart}
         onTypingStop={handleTypingStop}
         disabled={false}
+        replyTo={replyTo}
+        onCancelReply={handleCancelReply}
       />
     </div>
   );
