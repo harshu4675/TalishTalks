@@ -1,0 +1,184 @@
+require("dotenv").config();
+
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const mongoSanitize = require("express-mongo-sanitize");
+const xss = require("xss-clean");
+const compression = require("compression");
+const mongoose = require("mongoose");
+
+const connectDB = require("./config/db");
+const { notFound, errorHandler } = require("./middleware/errorMiddleware");
+const initializeSocket = require("./socket/socketHandler");
+const startAutoDeleteWorker = require("./socket/autoDeleteWorker");
+
+// Routes
+const authRoutes = require("./routes/authRoutes");
+const userRoutes = require("./routes/userRoutes");
+const friendRoutes = require("./routes/friendRoutes");
+const chatRoutes = require("./routes/chatRoutes");
+const messageRoutes = require("./routes/messageRoutes");
+
+const app = express();
+const server = http.createServer(app);
+
+// Trust proxy (needed for rate limiting behind reverse proxy like Render)
+app.set("trust proxy", 1);
+
+// ---- CORS Configuration ----
+const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000")
+  .split(",")
+  .map((url) => url.trim());
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+// ---- Socket.IO ----
+const io = new Server(server, {
+  cors: corsOptions,
+  pingTimeout: 60000,
+  pingInterval: 25000,
+});
+app.set("io", io);
+
+// ---- SECURITY MIDDLEWARE ----
+
+// Set secure HTTP headers
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
+
+// Gzip compression
+app.use(compression());
+
+// Sanitize NoSQL injection attempts
+app.use(mongoSanitize());
+
+// Sanitize XSS attacks
+app.use(xss());
+
+// Rate limiting - 100 requests per 15 mins per IP
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: {
+    success: false,
+    message: "Too many requests from this IP. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Stricter rate limit for auth routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: {
+    success: false,
+    message: "Too many auth attempts. Please try again in 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ---- BODY PARSING ----
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(cookieParser());
+app.use(cors(corsOptions));
+
+// Apply general limiter
+app.use("/api", limiter);
+
+// ---- ROUTES ----
+app.get("/api/health", (req, res) => {
+  res.json({
+    success: true,
+    message: "🚀 Talish Talks API is running!",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+  });
+});
+
+// Apply stricter limiter to auth routes
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/friends", friendRoutes);
+app.use("/api/chats", chatRoutes);
+app.use("/api/messages", messageRoutes);
+
+// ---- ERROR HANDLING ----
+app.use(notFound);
+app.use(errorHandler);
+
+// ---- INITIALIZE SOCKET.IO ----
+initializeSocket(io);
+
+// ---- DROP OLD TTL INDEX (one-time cleanup) ----
+const dropTTLIndex = require("./utils/dropTTLIndex");
+mongoose.connection.once("connected", async () => {
+  await dropTTLIndex();
+});
+
+// ---- START AUTO-DELETE WORKER ----
+startAutoDeleteWorker(io);
+
+// ---- HANDLE UNCAUGHT EXCEPTIONS ----
+process.on("uncaughtException", (err) => {
+  console.error("💥 Uncaught Exception:", err.message);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("💥 Unhandled Rejection:", err.message);
+  server.close(() => process.exit(1));
+});
+
+// ---- START SERVER ----
+const PORT = process.env.PORT || 5000;
+
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    server.listen(PORT, () => {
+      console.log("");
+      console.log("╔══════════════════════════════════════════╗");
+      console.log("║                                          ║");
+      console.log("║     🗨️  TALISH TALKS SERVER RUNNING      ║");
+      console.log("║                                          ║");
+      console.log(`║     🌐 Port: ${PORT}                         ║`);
+      console.log(
+        `║     📦 Env: ${process.env.NODE_ENV || "development"}              ║`,
+      );
+      console.log("║     🔌 Socket.IO: Active                 ║");
+      console.log("║     🛡️  Security: Enabled                ║");
+      console.log("║                                          ║");
+      console.log("╚══════════════════════════════════════════╝");
+      console.log("");
+    });
+  } catch (error) {
+    console.error("❌ Failed to start server:", error.message);
+    process.exit(1);
+  }
+};
+
+startServer();
