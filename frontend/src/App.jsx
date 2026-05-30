@@ -11,13 +11,14 @@ import { ChatProvider } from "./context/ChatContext";
 import { ToastProvider } from "./context/ToastContext";
 import { FriendsProvider } from "./context/FriendsContext";
 import { ThemeProvider } from "./context/ThemeContext";
-import { PWAProvider } from "./context/PWAContext"; // 🔥 ADD THIS
+import { PWAProvider } from "./context/PWAContext";
 import ToastNotifications from "./components/common/Toast";
 import LoadingScreen from "./components/common/LoadingScreen";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import SiteLock from "./components/common/SiteLock";
 import PWAInstallPrompt from "./components/common/PWAInstallPrompt";
+import UpdatePrompt from "./components/common/UpdatePrompt"; // 🔥 NEW
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
 import NotFound from "./pages/NotFound";
@@ -55,8 +56,12 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <PWAProvider>
-          {/* 🔥 Wrap everything */}
-          <Router>
+          <Router
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
             <AuthProvider>
               <SocketProvider>
                 <FriendsProvider>
@@ -64,6 +69,8 @@ function App() {
                     <ToastProvider>
                       <ToastNotifications />
                       <PWAInstallPrompt />
+                      {/* 🔥 ADD UPDATE PROMPT */}
+                      <UpdatePrompt />
                       <div className="App">
                         <Routes>
                           <Route path="/auth" element={<AuthPage />} />

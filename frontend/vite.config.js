@@ -6,28 +6,36 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // User chooses when to update
+      registerType: "prompt",
+
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.js",
       injectRegister: "auto",
+
       includeAssets: [
         "favicon.ico",
         "apple-touch-icon.png",
         "pwa-192x192.png",
         "pwa-512x512.png",
       ],
+
       manifest: {
         name: "Talish Talks",
         short_name: "Talish",
         description: "Real-time chat application with disappearing messages",
+
         theme_color: "#7c3aed",
         background_color: "#0a0a0a",
+
         display: "standalone",
         orientation: "portrait",
         scope: "/",
         start_url: "/",
+
         categories: ["social", "communication"],
+
         icons: [
           {
             src: "pwa-192x192.png",
@@ -48,6 +56,7 @@ export default defineConfig({
             purpose: "maskable",
           },
         ],
+
         screenshots: [
           {
             src: "screenshot-mobile.png",
@@ -65,12 +74,14 @@ export default defineConfig({
           },
         ],
       },
+
       devOptions: {
         enabled: true,
         type: "module",
       },
     }),
   ],
+
   server: {
     port: 3000,
     host: true,

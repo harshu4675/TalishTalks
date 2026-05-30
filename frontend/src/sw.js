@@ -3,6 +3,13 @@ import { precacheAndRoute } from "workbox-precaching";
 // Precache assets
 precacheAndRoute(self.__WB_MANIFEST);
 
+// 🔥 Listen for skip waiting message from client
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 // ============ PUSH NOTIFICATION HANDLER ============
 self.addEventListener("push", (event) => {
   let data = {};
@@ -10,7 +17,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch (e) {
-    data = { title: "Talish", body: event.data?.text() || "New notification" };
+    data = {
+      title: "Talish",
+      body: event.data?.text() || "New notification",
+    };
   }
 
   const title = data.title || "Talish";
@@ -38,14 +48,12 @@ self.addEventListener("notificationclick", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
-        // If app is already open, focus it
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && "focus" in client) {
             client.navigate(urlToOpen);
             return client.focus();
           }
         }
-        // Otherwise open new window
         if (self.clients.openWindow) {
           return self.clients.openWindow(urlToOpen);
         }
@@ -53,9 +61,10 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-// ============ SERVICE WORKER LIFECYCLE ============
-self.addEventListener("install", () => {
-  self.skipWaiting();
+// ============ LIFECYCLE ============
+self.addEventListener("install", (event) => {
+  // 🔥 Don't auto-skip - let user choose when to update
+  console.log("📦 New service worker installed, waiting for user action");
 });
 
 self.addEventListener("activate", (event) => {
