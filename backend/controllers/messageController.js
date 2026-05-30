@@ -33,7 +33,6 @@ const getMessages = async (req, res) => {
     const query = {
       chat: chatId,
       deletedFor: { $ne: req.user._id },
-      deletedForEveryone: false,
     };
 
     if (clearedAt) {
@@ -96,7 +95,6 @@ const sendMessage = async (req, res) => {
       });
     }
 
-    // Create the message with reply reference
     let message = await Message.create({
       chat: chatId,
       sender: req.user._id,
@@ -105,7 +103,6 @@ const sendMessage = async (req, res) => {
       replyTo: replyTo || null,
     });
 
-    // Populate sender + replyTo info
     message = await Message.findById(message._id)
       .populate("sender", "fullName username avatar")
       .populate({
@@ -128,8 +125,6 @@ const sendMessage = async (req, res) => {
 
     const io = req.app.get("io");
     if (io) {
-      // 🔥 FIX: Only emit to OTHER participant, not sender
-      // Sender already has the message from API response (optimistic update)
       if (otherParticipantId) {
         io.to(otherParticipantId.toString()).emit("new_message", {
           chatId,
@@ -147,7 +142,6 @@ const sendMessage = async (req, res) => {
           },
         });
 
-        // 🔔 Push notification
         sendPushToUser(otherParticipantId.toString(), {
           title: req.user.fullName,
           body:
@@ -206,7 +200,6 @@ const markSeen = async (req, res) => {
       chat: chatId,
       sender: { $ne: req.user._id },
       status: { $ne: "seen" },
-      deletedForEveryone: false,
     });
 
     if (messagesToUpdate.length === 0) {
@@ -232,7 +225,7 @@ const markSeen = async (req, res) => {
     chat.unreadCount.set(req.user._id.toString(), 0);
     await chat.save();
 
-    // Auto-delete based on disappearing mode
+    // 🔥 HARD DELETE based on disappearing mode
     if (
       chat.disappearingMessages?.mode &&
       chat.disappearingMessages.mode !== "off"
@@ -240,55 +233,46 @@ const markSeen = async (req, res) => {
       const messageIds = messagesToUpdate.map((m) => m._id);
       const mode = chat.disappearingMessages.mode;
 
-      let deleteAt = null;
       let delayMs = 0;
 
       if (mode === "on_seen") {
-        delayMs = 5 * 1000;
-        deleteAt = new Date(Date.now() + delayMs);
+        delayMs = 5 * 1000; // 5 seconds
       } else if (mode === "after_2min") {
-        delayMs = 2 * 60 * 1000;
-        deleteAt = new Date(Date.now() + delayMs);
+        delayMs = 2 * 60 * 1000; // 2 minutes
       }
 
-      if (deleteAt) {
-        await Message.updateMany(
-          { _id: { $in: messageIds } },
-          { $set: { autoDeleteAt: deleteAt } },
-        );
-
+      if (delayMs > 0) {
         const io = req.app.get("io");
+
         setTimeout(async () => {
           try {
-            await Message.updateMany(
-              { _id: { $in: messageIds } },
-              {
-                $set: {
-                  deletedForEveryone: true,
-                  content: "",
-                },
-              },
-            );
+            // 🔥 HARD DELETE - Permanently remove from database
+            const result = await Message.deleteMany({
+              _id: { $in: messageIds },
+            });
 
+            // Notify clients to remove from UI
             if (io) {
               messageIds.forEach((msgId) => {
                 io.to(chatId).emit("message_deleted", {
                   chatId,
                   messageId: msgId,
                   disappeared: true,
+                  hardDeleted: true,
                 });
               });
             }
+
             console.log(
-              `🗑️  Auto-deleted ${messageIds.length} disappearing message(s)`,
+              `🗑️  PERMANENTLY DELETED ${result.deletedCount} disappearing message(s) from DB`,
             );
           } catch (err) {
-            console.error("Auto-delete error:", err.message);
+            console.error("Hard delete error:", err.message);
           }
         }, delayMs);
 
         console.log(
-          `⏱️  Scheduled ${messageIds.length} message(s) to disappear in ${delayMs}ms`,
+          `⏱️  Scheduled ${messageIds.length} message(s) for PERMANENT DELETION in ${delayMs}ms`,
         );
       }
     }
@@ -329,10 +313,28 @@ const deleteForMe = async (req, res) => {
         message: "Message not found",
       });
     }
+
+    // Add user to deletedFor array
     if (!message.deletedFor.includes(req.user._id)) {
       message.deletedFor.push(req.user._id);
       await message.save();
     }
+
+    // 🔥 If BOTH users have deleted it, permanently remove from DB
+    const chat = await Chat.findById(message.chat);
+    if (chat) {
+      const allParticipantsDeleted = chat.participants.every((p) =>
+        message.deletedFor.some((d) => d.toString() === p.toString()),
+      );
+
+      if (allParticipantsDeleted) {
+        await Message.findByIdAndDelete(messageId);
+        console.log(
+          `🗑️  Both users deleted - permanently removed message from DB`,
+        );
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Message deleted for you",
@@ -347,7 +349,7 @@ const deleteForMe = async (req, res) => {
 };
 
 // ============================================
-// @desc    Delete for everyone
+// @desc    Delete for everyone (HARD DELETE)
 // ============================================
 const deleteForEveryone = async (req, res) => {
   try {
@@ -359,6 +361,7 @@ const deleteForEveryone = async (req, res) => {
         message: "Message not found",
       });
     }
+
     if (message.sender.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -366,21 +369,26 @@ const deleteForEveryone = async (req, res) => {
       });
     }
 
-    message.deletedForEveryone = true;
-    message.content = "This message was deleted";
-    await message.save();
+    const chatId = message.chat;
 
+    // 🔥 HARD DELETE - Permanently remove from database
+    await Message.findByIdAndDelete(messageId);
+
+    // Notify all participants
     const io = req.app.get("io");
     if (io) {
-      io.to(message.chat.toString()).emit("message_deleted", {
-        chatId: message.chat,
-        messageId: message._id,
+      io.to(chatId.toString()).emit("message_deleted", {
+        chatId,
+        messageId,
+        hardDeleted: true,
       });
     }
 
+    console.log(`🗑️  Message ${messageId} PERMANENTLY DELETED from DB`);
+
     return res.status(200).json({
       success: true,
-      message: "Message deleted for everyone",
+      message: "Message permanently deleted",
     });
   } catch (error) {
     console.error("Delete for everyone error:", error.message);
@@ -407,7 +415,6 @@ const searchMessages = async (req, res) => {
     const query = {
       content: { $regex: q, $options: "i" },
       deletedFor: { $ne: req.user._id },
-      deletedForEveryone: false,
     };
 
     if (chatId) {
