@@ -4,18 +4,8 @@ class NotificationService {
   constructor() {
     this.permission =
       typeof Notification !== "undefined" ? Notification.permission : "denied";
-    this.sound = null;
     this.swRegistration = null;
-    this.initSound();
-  }
-
-  initSound() {
-    try {
-      this.sound = new Audio("/sounds/notification.mp3");
-      this.sound.volume = 0.5;
-    } catch (e) {
-      console.warn("Notification sound not available");
-    }
+    this.audioContext = null;
   }
 
   async init() {
@@ -39,7 +29,6 @@ class NotificationService {
     return permission === "granted";
   }
 
-  // Convert VAPID key to Uint8Array
   urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding)
@@ -53,9 +42,13 @@ class NotificationService {
     return outputArray;
   }
 
-  // 🔥 Subscribe to push notifications (works even when app closed)
   async subscribeToPush() {
     try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        console.warn("Push notifications not supported in this browser");
+        return false;
+      }
+
       const granted = await this.requestPermission();
       if (!granted) {
         console.warn("Push permission denied");
@@ -68,12 +61,10 @@ class NotificationService {
         return false;
       }
 
-      // Check existing subscription
       let subscription =
         await this.swRegistration.pushManager.getSubscription();
 
       if (!subscription) {
-        // Get VAPID key from env
         const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
         if (!vapidKey) {
           console.error("VAPID public key missing in env");
@@ -86,7 +77,6 @@ class NotificationService {
         });
       }
 
-      // Send subscription to backend
       await pushAPI.subscribe(subscription);
       console.log("✅ Push subscription saved");
       return true;
@@ -112,15 +102,43 @@ class NotificationService {
     }
   }
 
+  // 🔥 Web Audio beep - no MP3 file needed!
   playSound() {
-    if (!this.sound) return;
     try {
-      this.sound.currentTime = 0;
-      this.sound.play().catch(() => {});
-    } catch (e) {}
+      if (!this.audioContext) {
+        this.audioContext = new (
+          window.AudioContext || window.webkitAudioContext
+        )();
+      }
+
+      if (this.audioContext.state === "suspended") {
+        this.audioContext.resume();
+      }
+
+      const ctx = this.audioContext;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      // Pleasant 2-tone notification beep
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        440,
+        ctx.currentTime + 0.15,
+      );
+
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.15);
+    } catch (e) {
+      // Silent fail
+    }
   }
 
-  // In-app notification (when app is open)
   show(title, options = {}) {
     if (this.permission !== "granted") return null;
     if (document.visibilityState === "visible") return null;

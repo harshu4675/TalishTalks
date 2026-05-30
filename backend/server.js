@@ -11,7 +11,7 @@ const mongoSanitize = require("express-mongo-sanitize");
 const xss = require("xss-clean");
 const compression = require("compression");
 const mongoose = require("mongoose");
-const pushRoutes = require("./routes/pushRoutes");
+
 const connectDB = require("./config/db");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const initializeSocket = require("./socket/socketHandler");
@@ -23,29 +23,37 @@ const userRoutes = require("./routes/userRoutes");
 const friendRoutes = require("./routes/friendRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const pushRoutes = require("./routes/pushRoutes");
 
 const app = express();
 const server = http.createServer(app);
 
-// Trust proxy (needed for rate limiting behind reverse proxy like Render)
+// Trust proxy
 app.set("trust proxy", 1);
 
 // ---- CORS Configuration ----
 const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000")
   .split(",")
-  .map((url) => url.trim());
+  .map((url) => url.trim().replace(/\/$/, "")); // Remove trailing slashes
+
+console.log("✅ Allowed CORS origins:", allowedOrigins);
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+
+    const cleanOrigin = origin.replace(/\/$/, "");
+
+    if (allowedOrigins.includes(cleanOrigin)) {
       return callback(null, true);
     }
-    return callback(new Error("Not allowed by CORS"));
+
+    console.warn(`❌ CORS blocked: ${origin}`);
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
@@ -58,25 +66,23 @@ const io = new Server(server, {
 app.set("io", io);
 
 // ---- SECURITY MIDDLEWARE ----
-
-// Set secure HTTP headers
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
-app.use("/api/push", pushRoutes);
+
+// 🔥 CRITICAL: CORS MUST come BEFORE routes
+app.use(cors(corsOptions));
 
 // Gzip compression
 app.use(compression());
 
-// Sanitize NoSQL injection attempts
+// Sanitize
 app.use(mongoSanitize());
-
-// Sanitize XSS attacks
 app.use(xss());
 
-// Rate limiting - 100 requests per 15 mins per IP
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -88,7 +94,6 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Stricter rate limit for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -104,7 +109,6 @@ const authLimiter = rateLimit({
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
-app.use(cors(corsOptions));
 
 // Apply general limiter
 app.use("/api", limiter);
@@ -119,12 +123,13 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Apply stricter limiter to auth routes
+// 🔥 ALL ROUTES AFTER CORS + BODY PARSING
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/push", pushRoutes); // 🔥 Moved here, AFTER CORS
 
 // ---- ERROR HANDLING ----
 app.use(notFound);
@@ -133,7 +138,7 @@ app.use(errorHandler);
 // ---- INITIALIZE SOCKET.IO ----
 initializeSocket(io);
 
-// ---- DROP OLD TTL INDEX (one-time cleanup) ----
+// ---- DROP OLD TTL INDEX ----
 const dropTTLIndex = require("./utils/dropTTLIndex");
 mongoose.connection.once("connected", async () => {
   await dropTTLIndex();
@@ -142,7 +147,7 @@ mongoose.connection.once("connected", async () => {
 // ---- START AUTO-DELETE WORKER ----
 startAutoDeleteWorker(io);
 
-// ---- HANDLE UNCAUGHT EXCEPTIONS ----
+// ---- HANDLE EXCEPTIONS ----
 process.on("uncaughtException", (err) => {
   console.error("💥 Uncaught Exception:", err.message);
   process.exit(1);

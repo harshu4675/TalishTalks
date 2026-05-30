@@ -28,7 +28,7 @@ const ChatWindow = ({ chat, onBack }) => {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const [sending, setSending] = useState(false);
-  const [replyTo, setReplyTo] = useState(null); // 🔥 NEW: Reply state
+  const [replyTo, setReplyTo] = useState(null);
 
   const otherUser = chat.otherUser;
   const isOnline = isUserOnline(otherUser._id);
@@ -68,11 +68,34 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
+  // 🔥 Smooth scroll to bottom
   useEffect(() => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      messagesEndRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
     }
   }, [messages, isTyping]);
+
+  // 🔥 Handle mobile keyboard - scroll to bottom when keyboard opens
+  useEffect(() => {
+    const handleResize = () => {
+      // When keyboard appears, viewport shrinks - scroll to latest message
+      if (messagesEndRef.current) {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "end",
+          });
+        }, 100);
+      }
+    };
+
+    window.visualViewport?.addEventListener("resize", handleResize);
+    return () =>
+      window.visualViewport?.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     if (!chat?._id || messages.length === 0) return;
@@ -103,7 +126,6 @@ const ChatWindow = ({ chat, onBack }) => {
     return () => socket.off("message_deleted", handleMessageDeleted);
   }, [socket, chat?._id, removeMessage]);
 
-  // 🔥 FIXED: Optimistic send WITHOUT duplication
   const handleSend = async (content, replyToData = null) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const optimisticMessage = {
@@ -119,25 +141,22 @@ const ChatWindow = ({ chat, onBack }) => {
       status: "sending",
       createdAt: new Date().toISOString(),
       isOptimistic: true,
-      replyTo: replyToData, // 🔥 Include reply data
+      replyTo: replyToData,
     };
 
     addMessage(optimisticMessage);
-    setReplyTo(null); // Clear reply
+    setReplyTo(null);
     setSending(true);
 
     try {
       const res = await messageAPI.send({
         chatId: chat._id,
         content,
-        replyTo: replyToData?._id || null, // Send reply ID to backend
+        replyTo: replyToData?._id || null,
       });
       const realMessage = res.data.data;
 
-      // 🔥 FIX: Replace optimistic with real message
-      // The socket "new_message" will be ignored if message already exists
       setMessages((prev) => {
-        // Remove ALL versions of this message (optimistic AND any socket echo)
         const filtered = prev.filter(
           (m) => m._id !== tempId && m._id !== realMessage._id,
         );
@@ -174,14 +193,8 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
-  // 🔥 NEW: Handle reply
-  const handleReply = (message) => {
-    setReplyTo(message);
-  };
-
-  const handleCancelReply = () => {
-    setReplyTo(null);
-  };
+  const handleReply = (message) => setReplyTo(message);
+  const handleCancelReply = () => setReplyTo(null);
 
   const groupMessagesByDate = (msgs) => {
     const groups = [];
@@ -218,23 +231,37 @@ const ChatWindow = ({ chat, onBack }) => {
   const messageGroups = groupMessagesByDate(visibleMessages);
 
   return (
+    // 🔥 FIXED: Use h-dvh (dynamic viewport) instead of h-full for mobile keyboard
     <div
-      className="flex flex-col h-full"
-      style={{ backgroundColor: "var(--color-bg)" }}
+      className="flex flex-col w-full"
+      style={{
+        backgroundColor: "var(--color-bg)",
+        height: "100dvh", // Dynamic viewport height (adapts to keyboard)
+        maxHeight: "100dvh",
+      }}
     >
-      <ChatHeader
-        chat={chat}
-        isOnline={isOnline}
-        isTyping={isTyping}
-        onBack={onBack}
-        onChatCleared={() => setMessages([])}
-      />
+      {/* 🔥 HEADER - Sticky at top */}
+      <div className="flex-shrink-0 sticky top-0 z-30">
+        <ChatHeader
+          chat={chat}
+          isOnline={isOnline}
+          isTyping={isTyping}
+          onBack={onBack}
+          onChatCleared={() => setMessages([])}
+        />
+      </div>
 
+      {/* 🔥 MESSAGES - Scrollable middle area */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-2 relative"
-        style={{ backgroundColor: "var(--color-bg)" }}
+        className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-3 sm:p-4 space-y-2 relative"
+        style={{
+          backgroundColor: "var(--color-bg)",
+          overscrollBehavior: "contain", // Prevent pull-to-refresh
+          WebkitOverflowScrolling: "touch", // Smooth iOS scroll
+        }}
       >
+        {/* Background pattern */}
         <div
           className="absolute inset-0 pointer-events-none opacity-30"
           style={{
@@ -336,14 +363,17 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
-      <ChatInput
-        onSend={handleSend}
-        onTypingStart={handleTypingStart}
-        onTypingStop={handleTypingStop}
-        disabled={false}
-        replyTo={replyTo}
-        onCancelReply={handleCancelReply}
-      />
+      {/* 🔥 INPUT - Sticky at bottom */}
+      <div className="flex-shrink-0 sticky bottom-0 z-30">
+        <ChatInput
+          onSend={handleSend}
+          onTypingStart={handleTypingStart}
+          onTypingStop={handleTypingStop}
+          disabled={false}
+          replyTo={replyTo}
+          onCancelReply={handleCancelReply}
+        />
+      </div>
     </div>
   );
 };

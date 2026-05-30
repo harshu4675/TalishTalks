@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   HiOutlineDotsVertical,
@@ -17,11 +18,13 @@ const ChatBubble = ({
   onReply,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const [dragX, setDragX] = useState(0);
   const [showReplyHint, setShowReplyHint] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const isDragging = useRef(false);
+  const buttonRef = useRef(null);
 
   if (message.deletedForEveryone) {
     return null;
@@ -64,7 +67,6 @@ const ChatBubble = ({
     return <HiCheck className="text-white/60 text-sm" title="Sent" />;
   };
 
-  // 🔥 NATIVE TOUCH HANDLERS - work better than framer-motion drag on mobile
   const handleTouchStart = (e) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
@@ -73,37 +75,25 @@ const ChatBubble = ({
 
   const handleTouchMove = (e) => {
     if (!touchStartX.current) return;
-
     const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;
     const diffX = currentX - touchStartX.current;
     const diffY = Math.abs(currentY - touchStartY.current);
 
-    // Only horizontal drag - if more vertical, ignore (let scroll work)
-    if (diffY > Math.abs(diffX)) {
-      return;
-    }
+    if (diffY > Math.abs(diffX)) return;
 
-    // 🔥 SWIPE LEFT for own messages (drag goes negative)
-    // 🔥 SWIPE RIGHT for other's messages (drag goes positive)
     const validDrag = isOwn ? diffX < 0 : diffX > 0;
 
     if (validDrag) {
       isDragging.current = true;
       const limitedDrag = Math.max(-100, Math.min(100, diffX));
       setDragX(limitedDrag);
-
-      if (Math.abs(limitedDrag) > 60) {
-        setShowReplyHint(true);
-      } else {
-        setShowReplyHint(false);
-      }
+      setShowReplyHint(Math.abs(limitedDrag) > 60);
     }
   };
 
   const handleTouchEnd = () => {
     if (isDragging.current && Math.abs(dragX) > 60) {
-      // Trigger reply
       if (onReply) onReply(message);
     }
     setDragX(0);
@@ -112,14 +102,48 @@ const ChatBubble = ({
     touchStartX.current = 0;
   };
 
-  // Double-click to reply (desktop)
   const handleDoubleClick = () => {
     if (onReply) onReply(message);
   };
 
+  // 🔥 Calculate menu position for portal
+  const handleMenuClick = (e) => {
+    e.stopPropagation();
+    if (!showMenu && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 180;
+      const menuHeight = 150; // approx
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+
+      let left = rect.right - menuWidth;
+      let top = rect.bottom + 5;
+
+      // Adjust if menu would go off-screen
+      if (left < 10) left = 10;
+      if (left + menuWidth > windowWidth - 10) {
+        left = windowWidth - menuWidth - 10;
+      }
+      if (top + menuHeight > windowHeight - 10) {
+        top = rect.top - menuHeight - 5; // Show above button
+      }
+
+      setMenuPosition({ top, left });
+    }
+    setShowMenu(!showMenu);
+  };
+
+  // Close menu on scroll
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleScroll = () => setShowMenu(false);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, [showMenu]);
+
   return (
-    <div className="flex flex-col relative overflow-hidden">
-      {/* Reply Icon (appears when swiping) */}
+    <div className="flex flex-col relative">
+      {/* Swipe reply icon */}
       <div
         className={`absolute top-1/2 -translate-y-1/2 transition-opacity ${
           isOwn ? "right-2" : "left-2"
@@ -182,9 +206,10 @@ const ChatBubble = ({
                 borderBottomRightRadius: isOwn ? "0.375rem" : "1rem",
                 borderBottomLeftRadius: isOwn ? "1rem" : "0.375rem",
                 opacity: message.isOptimistic ? 0.7 : 1,
+                paddingRight: "2rem",
               }}
             >
-              {/* Reply Preview inside bubble */}
+              {/* Reply Preview */}
               {message.replyTo && (
                 <div
                   className="mb-1.5 p-2 rounded-lg cursor-pointer"
@@ -239,98 +264,26 @@ const ChatBubble = ({
               </div>
             </div>
 
-            {/* Menu button - Desktop hover */}
+            {/* Menu Button - INSIDE bubble */}
             <button
-              onClick={() => setShowMenu(!showMenu)}
-              className={`absolute top-1/2 -translate-y-1/2 ${
-                isOwn ? "-left-8" : "-right-8"
-              } p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hidden md:block`}
+              ref={buttonRef}
+              onClick={handleMenuClick}
+              className="absolute top-1.5 right-1.5 p-1 rounded-full transition-all duration-200 z-10"
               style={{
-                backgroundColor: "var(--color-bgInput)",
-                color: "var(--color-textMuted)",
+                backgroundColor: isOwn
+                  ? "rgba(255,255,255,0.2)"
+                  : "rgba(0,0,0,0.2)",
+                color: isOwn ? "white" : "var(--color-textMuted)",
               }}
+              title="Options"
             >
               <HiOutlineDotsVertical className="text-sm" />
             </button>
-
-            {/* Menu button - Mobile always visible */}
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className={`absolute top-1/2 -translate-y-1/2 ${
-                isOwn ? "-left-7" : "-right-7"
-              } p-1 rounded-full md:hidden opacity-60`}
-              style={{ color: "var(--color-textMuted)" }}
-            >
-              <HiOutlineDotsVertical className="text-sm" />
-            </button>
-
-            <AnimatePresence>
-              {showMenu && (
-                <>
-                  <div
-                    onClick={() => setShowMenu(false)}
-                    className="fixed inset-0 z-10"
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                    transition={{ duration: 0.15 }}
-                    className={`absolute z-20 ${
-                      isOwn ? "right-0" : "left-0"
-                    } top-full mt-1 rounded-xl shadow-card-hover overflow-hidden min-w-[180px]`}
-                    style={{
-                      backgroundColor: "var(--color-bgCard)",
-                      border: "1px solid var(--color-border)",
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        if (onReply) onReply(message);
-                        setShowMenu(false);
-                      }}
-                      className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors hover:bg-black/20 border-b"
-                      style={{
-                        color: "var(--color-text)",
-                        borderColor: "var(--color-border)",
-                      }}
-                    >
-                      <HiOutlineReply className="text-base" />
-                      Reply
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        onDeleteForMe(message._id);
-                        setShowMenu(false);
-                      }}
-                      className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors hover:bg-black/20"
-                      style={{ color: "var(--color-text)" }}
-                    >
-                      <HiOutlineTrash className="text-base" />
-                      Delete for me
-                    </button>
-                    {isOwn && (
-                      <button
-                        onClick={() => {
-                          onDeleteForEveryone(message._id);
-                          setShowMenu(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors border-t"
-                        style={{ borderColor: "var(--color-border)" }}
-                      >
-                        <HiOutlineTrash className="text-base" />
-                        Delete for everyone
-                      </button>
-                    )}
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
           </div>
         </div>
       </motion.div>
 
+      {/* "Seen" indicator */}
       {isOwn && isLastSeen && message.status === "seen" && (
         <motion.div
           initial={{ opacity: 0, y: -5 }}
@@ -346,6 +299,77 @@ const ChatBubble = ({
           </div>
         </motion.div>
       )}
+
+      {/* 🔥 PORTAL: Dropdown menu rendered OUTSIDE component tree */}
+      {showMenu &&
+        createPortal(
+          <>
+            {/* Backdrop */}
+            <div
+              onClick={() => setShowMenu(false)}
+              className="fixed inset-0 z-[9998]"
+              style={{ backgroundColor: "transparent" }}
+            />
+
+            {/* Dropdown */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -5 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -5 }}
+              transition={{ duration: 0.15 }}
+              className="fixed rounded-xl overflow-hidden min-w-[180px] shadow-2xl"
+              style={{
+                top: `${menuPosition.top}px`,
+                left: `${menuPosition.left}px`,
+                backgroundColor: "var(--color-bgCard)",
+                border: "1px solid var(--color-border)",
+                zIndex: 9999,
+              }}
+            >
+              <button
+                onClick={() => {
+                  if (onReply) onReply(message);
+                  setShowMenu(false);
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors hover:bg-black/20 border-b"
+                style={{
+                  color: "var(--color-text)",
+                  borderColor: "var(--color-border)",
+                }}
+              >
+                <HiOutlineReply className="text-base" />
+                Reply
+              </button>
+
+              <button
+                onClick={() => {
+                  onDeleteForMe(message._id);
+                  setShowMenu(false);
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors hover:bg-black/20"
+                style={{ color: "var(--color-text)" }}
+              >
+                <HiOutlineTrash className="text-base" />
+                Delete for me
+              </button>
+
+              {isOwn && (
+                <button
+                  onClick={() => {
+                    onDeleteForEveryone(message._id);
+                    setShowMenu(false);
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                >
+                  <HiOutlineTrash className="text-base" />
+                  Delete for everyone
+                </button>
+              )}
+            </motion.div>
+          </>,
+          document.body, // 🔥 Render directly to body
+        )}
     </div>
   );
 };

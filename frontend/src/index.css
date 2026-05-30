@@ -37,6 +37,27 @@
     transition: background-color 0.3s ease;
   }
 
+  /* 🔥 CRITICAL: Prevent iOS Safari zoom on input focus */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Restore normal font size on desktop */
+  @media (min-width: 768px) {
+    input,
+    textarea,
+    select {
+      font-size: 14px !important;
+    }
+  }
+
+  /* Remove tap highlight on mobile */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
@@ -133,8 +154,14 @@
     color: var(--color-text);
     border-radius: 0.75rem;
     padding: 0.75rem 1rem;
-    font-size: 0.875rem;
+    font-size: 16px; /* 🔥 Prevents iOS zoom */
     transition: all 0.3s ease;
+  }
+
+  @media (min-width: 768px) {
+    .input-dark {
+      font-size: 0.875rem;
+    }
   }
 
   .input-dark::placeholder {
@@ -224,8 +251,14 @@
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--color-border) var(--color-bg);
+    -webkit-overflow-scrolling: touch; /* 🔥 Smooth iOS scroll */
   }
 }
+
+/* ========================================
+   🔥 PWA + MOBILE KEYBOARD FIXES
+   ======================================== */
+
 /* PWA Safe Area Support */
 @supports (padding: max(0px)) {
   body {
@@ -236,21 +269,21 @@
   }
 }
 
-/* For standalone mode specifically */
+/* For standalone PWA mode */
 @media all and (display-mode: standalone) {
   body {
-    /* Account for status bar */
     padding-top: env(safe-area-inset-top, 0px);
   }
 }
 
-/* Ensure app fills screen */
+/* 🔥 CRITICAL: Dynamic viewport height for mobile keyboards */
 html,
 body,
 #root {
   height: 100%;
-  height: 100dvh; /* dynamic viewport height */
+  height: 100dvh; /* Dynamic viewport - adapts to keyboard */
   overflow: hidden;
+  overscroll-behavior: none; /* Disable pull-to-refresh globally */
 }
 
 #root {
@@ -262,4 +295,64 @@ body,
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 🔥 Disable pull-to-refresh in chat areas */
+body {
+  overscroll-behavior-y: contain;
+  position: fixed;
+  width: 100%;
+}
+
+/* Smooth scroll for chat */
+.scrollbar-thin {
+  scroll-behavior: smooth;
+}
+
+/* Prevent text selection on UI elements */
+button,
+.sidebar-item,
+.sidebar-item-active {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Allow text selection in messages */
+.chat-sent,
+.chat-received,
+p {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 🔥 iOS button styling reset */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+/* Fix iOS input shadow */
+input,
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: inherit;
+}
+
+/* Better focus visibility for accessibility */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Remove focus outline on click (keep for keyboard) */
+button:focus:not(:focus-visible) {
+  outline: none;
 }
