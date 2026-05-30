@@ -68,7 +68,7 @@ const ChatInput = ({
 
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.focus(); // Keep focus after send
+      textareaRef.current.focus();
     }
   };
 
@@ -79,18 +79,8 @@ const ChatInput = ({
     }
   };
 
-  // 🔥 CRITICAL: Scroll input into view when keyboard opens
-  const handleFocus = () => {
-    // Wait for keyboard animation
-    setTimeout(() => {
-      if (containerRef.current) {
-        containerRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "end",
-        });
-      }
-    }, 300);
-  };
+  // ❌ REMOVED: handleFocus with scrollIntoView (was causing the issue!)
+  // The ChatWindow's VisualViewport handles layout properly now
 
   useEffect(() => {
     return () => {
@@ -107,7 +97,6 @@ const ChatInput = ({
       style={{
         backgroundColor: "var(--color-bgCard)",
         borderColor: "var(--color-border)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)", // 🔥 Safe area for iPhone notch
       }}
     >
       {/* Reply Preview */}
@@ -179,7 +168,6 @@ const ChatInput = ({
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            onFocus={handleFocus}
             placeholder="Type a message..."
             disabled={disabled}
             rows={1}

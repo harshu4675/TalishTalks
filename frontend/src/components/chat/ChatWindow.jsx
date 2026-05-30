@@ -30,41 +30,45 @@ const ChatWindow = ({ chat, onBack }) => {
   const containerRef = useRef(null);
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
-  const [viewportHeight, setViewportHeight] = useState("100dvh"); // 🔥 NEW
 
   const otherUser = chat.otherUser;
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
 
-  // 🔥 CRITICAL: Track Visual Viewport for mobile keyboard
+  // 🔥🔥🔥 CRITICAL FIX: VisualViewport API for keyboard handling
   useEffect(() => {
-    if (!window.visualViewport) return;
+    const setVH = () => {
+      // Use VisualViewport if available (modern browsers)
+      const vh = window.visualViewport
+        ? window.visualViewport.height
+        : window.innerHeight;
 
-    const handleViewportChange = () => {
-      const vh = window.visualViewport.height;
-      setViewportHeight(`${vh}px`);
+      // Set CSS variable that we'll use in the container
+      document.documentElement.style.setProperty("--app-height", `${vh}px`);
 
-      // Scroll to bottom when keyboard opens
+      // Auto-scroll to bottom when keyboard opens
       setTimeout(() => {
-        if (messagesEndRef.current) {
-          messagesEndRef.current.scrollIntoView({
-            behavior: "smooth",
-            block: "end",
-          });
-        }
+        messagesEndRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
       }, 100);
     };
 
-    window.visualViewport.addEventListener("resize", handleViewportChange);
-    window.visualViewport.addEventListener("scroll", handleViewportChange);
+    setVH();
 
-    // Initial set
-    handleViewportChange();
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", setVH);
+      window.visualViewport.addEventListener("scroll", setVH);
 
-    return () => {
-      window.visualViewport.removeEventListener("resize", handleViewportChange);
-      window.visualViewport.removeEventListener("scroll", handleViewportChange);
-    };
+      return () => {
+        window.visualViewport.removeEventListener("resize", setVH);
+        window.visualViewport.removeEventListener("scroll", setVH);
+      };
+    } else {
+      window.addEventListener("resize", setVH);
+      return () => window.removeEventListener("resize", setVH);
+    }
   }, []);
 
   const lastSeenOwnMessageId = (() => {
@@ -242,18 +246,18 @@ const ChatWindow = ({ chat, onBack }) => {
   const messageGroups = groupMessagesByDate(visibleMessages);
 
   return (
-    // 🔥 FIXED: Use viewport height that responds to keyboard
+    // 🔥 FIXED: Container uses CSS variable that updates with keyboard
     <div
       ref={containerRef}
       className="flex flex-col w-full overflow-hidden"
       style={{
         backgroundColor: "var(--color-bg)",
-        height: viewportHeight, // 🔥 Dynamic from VisualViewport
-        maxHeight: viewportHeight,
+        height: "var(--app-height, 100dvh)", // 🔥 Dynamic height from JS
+        maxHeight: "var(--app-height, 100dvh)",
       }}
     >
-      {/* Header - Fixed at top */}
-      <div className="flex-shrink-0">
+      {/* 🔥 HEADER - Always visible at top */}
+      <div className="flex-shrink-0 z-30">
         <ChatHeader
           chat={chat}
           isOnline={isOnline}
@@ -263,10 +267,10 @@ const ChatWindow = ({ chat, onBack }) => {
         />
       </div>
 
-      {/* Messages - Scrollable */}
+      {/* 🔥 MESSAGES - Flexible scrollable area in middle */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-3 sm:p-4 space-y-2 relative"
+        className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-3 sm:p-4 space-y-2 relative min-h-0"
         style={{
           backgroundColor: "var(--color-bg)",
           overscrollBehavior: "contain",
@@ -374,8 +378,8 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
-      {/* Input - Fixed at bottom (above keyboard) */}
-      <div className="flex-shrink-0">
+      {/* 🔥 INPUT - Always visible at bottom */}
+      <div className="flex-shrink-0 z-30">
         <ChatInput
           onSend={handleSend}
           onTypingStart={handleTypingStart}
