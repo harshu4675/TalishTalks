@@ -27,12 +27,45 @@ const ChatWindow = ({ chat, onBack }) => {
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const containerRef = useRef(null);
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
+  const [viewportHeight, setViewportHeight] = useState("100dvh"); // 🔥 NEW
 
   const otherUser = chat.otherUser;
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
+
+  // 🔥 CRITICAL: Track Visual Viewport for mobile keyboard
+  useEffect(() => {
+    if (!window.visualViewport) return;
+
+    const handleViewportChange = () => {
+      const vh = window.visualViewport.height;
+      setViewportHeight(`${vh}px`);
+
+      // Scroll to bottom when keyboard opens
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "end",
+          });
+        }
+      }, 100);
+    };
+
+    window.visualViewport.addEventListener("resize", handleViewportChange);
+    window.visualViewport.addEventListener("scroll", handleViewportChange);
+
+    // Initial set
+    handleViewportChange();
+
+    return () => {
+      window.visualViewport.removeEventListener("resize", handleViewportChange);
+      window.visualViewport.removeEventListener("scroll", handleViewportChange);
+    };
+  }, []);
 
   const lastSeenOwnMessageId = (() => {
     const ownSeenMessages = messages.filter((m) => {
@@ -68,7 +101,6 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
-  // 🔥 Smooth scroll to bottom
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({
@@ -78,33 +110,12 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   }, [messages, isTyping]);
 
-  // 🔥 Handle mobile keyboard - scroll to bottom when keyboard opens
-  useEffect(() => {
-    const handleResize = () => {
-      // When keyboard appears, viewport shrinks - scroll to latest message
-      if (messagesEndRef.current) {
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "end",
-          });
-        }, 100);
-      }
-    };
-
-    window.visualViewport?.addEventListener("resize", handleResize);
-    return () =>
-      window.visualViewport?.removeEventListener("resize", handleResize);
-  }, []);
-
   useEffect(() => {
     if (!chat?._id || messages.length === 0) return;
-
     const hasUnseen = messages.some((m) => {
       const senderId = typeof m.sender === "object" ? m.sender._id : m.sender;
       return senderId !== user._id && m.status !== "seen";
     });
-
     if (hasUnseen) {
       messageAPI.markSeen(chat._id).catch(() => {});
     }
@@ -231,17 +242,18 @@ const ChatWindow = ({ chat, onBack }) => {
   const messageGroups = groupMessagesByDate(visibleMessages);
 
   return (
-    // 🔥 FIXED: Use h-dvh (dynamic viewport) instead of h-full for mobile keyboard
+    // 🔥 FIXED: Use viewport height that responds to keyboard
     <div
-      className="flex flex-col w-full"
+      ref={containerRef}
+      className="flex flex-col w-full overflow-hidden"
       style={{
         backgroundColor: "var(--color-bg)",
-        height: "100dvh", // Dynamic viewport height (adapts to keyboard)
-        maxHeight: "100dvh",
+        height: viewportHeight, // 🔥 Dynamic from VisualViewport
+        maxHeight: viewportHeight,
       }}
     >
-      {/* 🔥 HEADER - Sticky at top */}
-      <div className="flex-shrink-0 sticky top-0 z-30">
+      {/* Header - Fixed at top */}
+      <div className="flex-shrink-0">
         <ChatHeader
           chat={chat}
           isOnline={isOnline}
@@ -251,17 +263,16 @@ const ChatWindow = ({ chat, onBack }) => {
         />
       </div>
 
-      {/* 🔥 MESSAGES - Scrollable middle area */}
+      {/* Messages - Scrollable */}
       <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-3 sm:p-4 space-y-2 relative"
         style={{
           backgroundColor: "var(--color-bg)",
-          overscrollBehavior: "contain", // Prevent pull-to-refresh
-          WebkitOverflowScrolling: "touch", // Smooth iOS scroll
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
         }}
       >
-        {/* Background pattern */}
         <div
           className="absolute inset-0 pointer-events-none opacity-30"
           style={{
@@ -363,8 +374,8 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
-      {/* 🔥 INPUT - Sticky at bottom */}
-      <div className="flex-shrink-0 sticky bottom-0 z-30">
+      {/* Input - Fixed at bottom (above keyboard) */}
+      <div className="flex-shrink-0">
         <ChatInput
           onSend={handleSend}
           onTypingStart={handleTypingStart}

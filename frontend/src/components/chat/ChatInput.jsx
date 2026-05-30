@@ -19,7 +19,9 @@ const ChatInput = ({
   const [isTyping, setIsTyping] = useState(false);
   const textareaRef = useRef(null);
   const typingTimerRef = useRef(null);
+  const containerRef = useRef(null);
 
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -30,8 +32,9 @@ const ChatInput = ({
     }
   }, [text]);
 
+  // Auto-focus when reply is added
   useEffect(() => {
-    if (textareaRef.current && !disabled) {
+    if (textareaRef.current && !disabled && replyTo) {
       textareaRef.current.focus();
     }
   }, [disabled, replyTo]);
@@ -65,7 +68,7 @@ const ChatInput = ({
 
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.focus();
+      textareaRef.current.focus(); // Keep focus after send
     }
   };
 
@@ -74,6 +77,19 @@ const ChatInput = ({
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // 🔥 CRITICAL: Scroll input into view when keyboard opens
+  const handleFocus = () => {
+    // Wait for keyboard animation
+    setTimeout(() => {
+      if (containerRef.current) {
+        containerRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+      }
+    }, 300);
   };
 
   useEffect(() => {
@@ -86,10 +102,12 @@ const ChatInput = ({
 
   return (
     <div
+      ref={containerRef}
       className="border-t backdrop-blur-md"
       style={{
         backgroundColor: "var(--color-bgCard)",
         borderColor: "var(--color-border)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)", // 🔥 Safe area for iPhone notch
       }}
     >
       {/* Reply Preview */}
@@ -161,10 +179,10 @@ const ChatInput = ({
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onFocus={handleFocus}
             placeholder="Type a message..."
             disabled={disabled}
             rows={1}
-            autoFocus
             className="flex-1 bg-transparent text-sm resize-none outline-none max-h-[120px] py-2 scrollbar-thin"
             style={{ color: "var(--color-text)" }}
           />
