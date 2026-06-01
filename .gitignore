@@ -26,7 +26,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Cache
+#cache
 .cache/
 .parcel-cache/
 
