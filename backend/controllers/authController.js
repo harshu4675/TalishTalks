@@ -4,7 +4,6 @@ const { validationResult } = require("express-validator");
 
 const register = async (req, res) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -16,7 +15,6 @@ const register = async (req, res) => {
 
     const { fullName, username, email, password } = req.body;
 
-    // Check if user with this email already exists
     const emailExists = await User.findOne({ email: email.toLowerCase() });
     if (emailExists) {
       return res.status(400).json({

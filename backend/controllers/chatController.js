@@ -49,11 +49,6 @@ const getChats = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Create or get chat with a friend
-// @route   POST /api/chats/create
-// @access  Private
-// ============================================
 const createChat = async (req, res) => {
   try {
     const { friendId } = req.body;
