@@ -16,6 +16,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useSocket } from "../hooks/useSocket";
 import { useFriends } from "../hooks/useFriends";
 import { useChat } from "../hooks/useChat";
+import { useBackButton } from "../hooks/useBackButton"; // 🔥 NEW
 import FriendList from "../components/friends/FriendList";
 import AddFriend from "../components/friends/AddFriend";
 import FriendRequests from "../components/friends/FriendRequests";
@@ -39,11 +40,26 @@ const ChatPage = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
-
   const [showRequests, setShowRequests] = useState(false);
-  const [activeTab, setActiveTab] = useState("chats"); // 'chats' | 'friends'
+  const [activeTab, setActiveTab] = useState("chats");
   const [searchQuery, setSearchQuery] = useState("");
   const [creatingChat, setCreatingChat] = useState(false);
+
+  // 🔥 NEW: Detect mobile view
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // 🔥 NEW: Back button handling for active chat (mobile only)
+  // When user is in a chat on mobile, back button should close the chat
+  useBackButton(!!activeChat && isMobile, () => {
+    closeChat();
+  });
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -51,13 +67,11 @@ const ChatPage = () => {
     toast.success("Logged out successfully 👋");
   };
 
-  // Open chat when friend is clicked
   const handleFriendClick = async (friend) => {
     setCreatingChat(true);
     try {
       const res = await chatAPI.create({ friendId: friend._id });
       const chat = res.data.chat;
-      // Refresh chats list
       await fetchChats();
       selectChat(chat);
       setActiveTab("chats");
@@ -68,7 +82,6 @@ const ChatPage = () => {
     }
   };
 
-  // Filter chats/friends by search
   const filteredChats = chats.filter(
     (c) =>
       c.otherUser?.fullName

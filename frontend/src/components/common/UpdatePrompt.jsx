@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { HiOutlineRefresh, HiOutlineX, HiSparkles } from "react-icons/hi";
+import { useBackButton } from "../../hooks/useBackButton"; // 🔥 NEW
 
 const UpdatePrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
@@ -13,8 +14,6 @@ const UpdatePrompt = () => {
   } = useRegisterSW({
     onRegistered(swRegistration) {
       console.log("✅ Service Worker registered");
-
-      // 🔥 Check for updates every 60 seconds (when app is open)
       if (swRegistration) {
         setInterval(() => {
           swRegistration.update();
@@ -30,6 +29,11 @@ const UpdatePrompt = () => {
     },
   });
 
+  // 🔥 NEW: Back button closes update prompt (only if not updating)
+  useBackButton(showPrompt && !updating, () => {
+    handleDismiss();
+  });
+
   useEffect(() => {
     if (needRefresh) {
       setShowPrompt(true);
@@ -39,7 +43,6 @@ const UpdatePrompt = () => {
   const handleUpdate = async () => {
     setUpdating(true);
     try {
-      // 🔥 Update service worker and reload
       await updateServiceWorker(true);
     } catch (err) {
       console.error("Update failed:", err);
@@ -51,7 +54,6 @@ const UpdatePrompt = () => {
     setShowPrompt(false);
     setNeedRefresh(false);
 
-    // 🔥 Re-show after 10 minutes if not updated
     setTimeout(
       () => {
         if (needRefresh) {
@@ -66,16 +68,14 @@ const UpdatePrompt = () => {
     <AnimatePresence>
       {showPrompt && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300]"
-            onClick={handleDismiss}
+            onClick={!updating ? handleDismiss : undefined}
           />
 
-          {/* Centered Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -91,9 +91,7 @@ const UpdatePrompt = () => {
                 border: "1px solid var(--color-border)",
               }}
             >
-              {/* Header with Icon */}
               <div className="relative pt-6 pb-2 px-5 text-center">
-                {/* Close button */}
                 <button
                   onClick={handleDismiss}
                   disabled={updating}
@@ -103,7 +101,6 @@ const UpdatePrompt = () => {
                   <HiOutlineX className="text-lg" />
                 </button>
 
-                {/* Animated Icon */}
                 <motion.div
                   animate={{
                     rotate: updating ? 360 : 0,
@@ -122,7 +119,6 @@ const UpdatePrompt = () => {
                 >
                   <HiOutlineRefresh className="text-white text-4xl" />
 
-                  {/* Sparkle effect */}
                   <motion.div
                     animate={{
                       scale: [1, 1.2, 1],
@@ -154,7 +150,6 @@ const UpdatePrompt = () => {
                 </p>
               </div>
 
-              {/* Features list */}
               <div className="px-5 py-3">
                 <div
                   className="p-3 rounded-xl"
@@ -180,7 +175,6 @@ const UpdatePrompt = () => {
                 </div>
               </div>
 
-              {/* Action buttons */}
               <div className="p-5 pt-2 flex flex-col gap-2">
                 <motion.button
                   whileTap={{ scale: 0.98 }}

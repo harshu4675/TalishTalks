@@ -3,12 +3,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { HiOutlineX, HiOutlineSearch, HiOutlineUserAdd } from "react-icons/hi";
 import toast from "react-hot-toast";
 import { friendAPI, userAPI } from "../../services/api";
+import { useBackButton } from "../../hooks/useBackButton"; // 🔥 NEW
 
 const AddFriend = ({ isOpen, onClose, onRequestSent }) => {
   const [username, setUsername] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [sendingTo, setSendingTo] = useState(null);
+
+  // 🔥 NEW: Back button closes modal instead of exiting app
+  useBackButton(isOpen, onClose);
 
   useEffect(() => {
     if (!username || username.length < 2) {

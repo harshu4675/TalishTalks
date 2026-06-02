@@ -5,12 +5,19 @@ import notificationService from "../../services/notificationService";
 import toast from "react-hot-toast";
 import { useAuth } from "../../hooks/useAuth";
 import { usePWA } from "../../context/PWAContext";
+import { useBackButton } from "../../hooks/useBackButton"; // 🔥 NEW
 
 const PWAInstallPrompt = () => {
   const { user } = useAuth();
   const { isInstallable, isInstalled, installPWA } = usePWA();
   const [showInstall, setShowInstall] = useState(false);
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+
+  // 🔥 NEW: Back button closes install modal
+  useBackButton(showInstall, () => setShowInstall(false));
+
+  // 🔥 NEW: Back button closes notification modal
+  useBackButton(showNotifPrompt, () => setShowNotifPrompt(false));
 
   useEffect(() => {
     if (isInstallable && !isInstalled) {
@@ -69,11 +76,10 @@ const PWAInstallPrompt = () => {
 
   return (
     <>
-      {/* INSTALL POPUP - CENTERED MODAL */}
+      {/* INSTALL POPUP */}
       <AnimatePresence>
         {showInstall && !isInstalled && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -82,7 +88,6 @@ const PWAInstallPrompt = () => {
               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[199]"
             />
 
-            {/* Centered Modal */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -97,7 +102,6 @@ const PWAInstallPrompt = () => {
                   border: "1px solid var(--color-border)",
                 }}
               >
-                {/* Close button */}
                 <div className="flex justify-end p-2">
                   <button
                     onClick={handleDismissInstall}
@@ -108,7 +112,6 @@ const PWAInstallPrompt = () => {
                   </button>
                 </div>
 
-                {/* Content */}
                 <div className="px-5 pb-5 text-center">
                   <div
                     className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
@@ -159,11 +162,10 @@ const PWAInstallPrompt = () => {
         )}
       </AnimatePresence>
 
-      {/* NOTIFICATION POPUP - CENTERED MODAL */}
+      {/* NOTIFICATION POPUP */}
       <AnimatePresence>
         {showNotifPrompt && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -172,7 +174,6 @@ const PWAInstallPrompt = () => {
               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[199]"
             />
 
-            {/* Centered Modal */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -187,7 +188,6 @@ const PWAInstallPrompt = () => {
                   border: "1px solid var(--color-border)",
                 }}
               >
-                {/* Close */}
                 <div className="flex justify-end p-2">
                   <button
                     onClick={handleDismissNotif}
@@ -198,7 +198,6 @@ const PWAInstallPrompt = () => {
                   </button>
                 </div>
 
-                {/* Content */}
                 <div className="px-5 pb-5 text-center">
                   <div
                     className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"

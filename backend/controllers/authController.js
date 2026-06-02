@@ -234,11 +234,6 @@ const logout = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Check username availability
-// @route   GET /api/auth/check-username/:username
-// @access  Public
-// ============================================
 const checkUsername = async (req, res) => {
   try {
     const { username } = req.params;

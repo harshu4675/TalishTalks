@@ -2,11 +2,6 @@ const User = require("../models/User");
 const FriendRequest = require("../models/FriendRequest");
 const { sendPushToUser } = require("../utils/pushService");
 
-// ============================================
-// @desc    Send a friend request
-// @route   POST /api/friends/request
-// @access  Private
-// ============================================
 const sendFriendRequest = async (req, res) => {
   try {
     const { username } = req.body;

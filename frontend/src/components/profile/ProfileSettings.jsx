@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import InstallAppButton from "../common/InstallAppButton";
-import NotificationToggle from "../common/NotificationToggle"; // ✅ Fixed double slash
+import NotificationToggle from "../common/NotificationToggle";
 import {
   HiOutlineX,
   HiOutlineUser,
@@ -14,6 +14,7 @@ import {
 import toast from "react-hot-toast";
 import { useAuth } from "../../hooks/useAuth";
 import { userAPI } from "../../services/api";
+import { useBackButton } from "../../hooks/useBackButton"; // 🔥 NEW
 
 const hashPassword = (password) => {
   let hash = 0;
@@ -43,6 +44,9 @@ const ProfileSettings = ({ isOpen, onClose }) => {
   const [newHint, setNewHint] = useState(localStorage.getItem(HINT_KEY) || "");
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // 🔥 NEW: Handle device back button - close modal instead of exiting app
+  useBackButton(isOpen, onClose);
 
   const handleSaveProfile = async () => {
     if (fullName.trim().length < 2) {
@@ -246,10 +250,8 @@ const ProfileSettings = ({ isOpen, onClose }) => {
 
               {/* Content Area */}
               <div className="overflow-y-auto scrollbar-thin flex-1 min-h-0">
-                {/* PROFILE TAB */}
                 {activeTab === "profile" && (
                   <div className="p-4 sm:p-5 space-y-4">
-                    {/* Avatar */}
                     <div className="flex flex-col items-center gap-3">
                       <div className="relative">
                         <img
@@ -340,7 +342,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                       </p>
                     </div>
 
-                    {/* ✅ MOVED INSIDE PROFILE TAB - Notification Toggle */}
                     <div>
                       <label
                         className="block text-xs font-medium mb-1.5"
@@ -351,7 +352,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                       <NotificationToggle />
                     </div>
 
-                    {/* ✅ MOVED INSIDE PROFILE TAB - Install App Button */}
                     <div>
                       <label
                         className="block text-xs font-medium mb-1.5"
@@ -364,7 +364,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                   </div>
                 )}
 
-                {/* PASSWORD TAB */}
                 {activeTab === "password" && (
                   <div className="p-4 sm:p-5 space-y-4">
                     <div
@@ -534,7 +533,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                 )}
               </div>
 
-              {/* Footer */}
               {activeTab === "profile" && (
                 <div
                   className="p-4 sm:p-5 border-t flex gap-2 flex-shrink-0"

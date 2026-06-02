@@ -9,9 +9,10 @@ import {
 import toast from "react-hot-toast";
 import { friendAPI } from "../../services/api";
 import { useSocket } from "../../hooks/useSocket";
+import { useBackButton } from "../../hooks/useBackButton"; // 🔥 NEW
 
 const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
-  const [activeTab, setActiveTab] = useState("received"); // 'received' | 'sent'
+  const [activeTab, setActiveTab] = useState("received");
   const [received, setReceived] = useState([]);
   const [sent, setSent] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -19,14 +20,15 @@ const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
 
   const { socket } = useSocket();
 
-  // Fetch requests when modal opens
+  // 🔥 NEW: Handle device back button - close modal instead of exiting app
+  useBackButton(isOpen, onClose);
+
   useEffect(() => {
     if (isOpen) {
       fetchRequests();
     }
   }, [isOpen]);
 
-  // Listen for new friend requests via socket
   useEffect(() => {
     if (!socket) return;
 
@@ -87,7 +89,6 @@ const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -96,7 +97,6 @@ const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
           />
 
-          {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -109,7 +109,6 @@ const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
               className="w-full max-w-md bg-dark-50 rounded-2xl border border-dark-200/50 shadow-card-hover overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header */}
               <div className="p-5 border-b border-dark-200/50 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-accent flex items-center justify-center">
@@ -132,7 +131,6 @@ const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
                 </button>
               </div>
 
-              {/* Tabs */}
               <div className="flex bg-dark px-5 pt-4 gap-2">
                 <button
                   onClick={() => setActiveTab("received")}
@@ -166,7 +164,6 @@ const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
                 </button>
               </div>
 
-              {/* List */}
               <div className="max-h-96 overflow-y-auto scrollbar-thin p-4">
                 {loading ? (
                   <div className="space-y-3">
@@ -299,7 +296,6 @@ const FriendRequests = ({ isOpen, onClose, onRequestHandled }) => {
   );
 };
 
-// Empty state helper
 const EmptyState = ({ icon, text, subtext }) => (
   <div className="text-center py-12">
     <div className="text-5xl mb-3">{icon}</div>

@@ -9,6 +9,7 @@ import { messageAPI } from "../../services/api";
 import { useAuth } from "../../hooks/useAuth";
 import { useSocket } from "../../hooks/useSocket";
 import { useChat } from "../../hooks/useChat";
+import { useBackButton } from "../../hooks/useBackButton";
 
 const ChatWindow = ({ chat, onBack }) => {
   const { user } = useAuth();
@@ -35,18 +36,17 @@ const ChatWindow = ({ chat, onBack }) => {
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
 
-  // 🔥🔥🔥 CRITICAL FIX: VisualViewport API for keyboard handling
+  useBackButton(!!chat, () => {
+    if (onBack) onBack();
+  });
   useEffect(() => {
     const setVH = () => {
-      // Use VisualViewport if available (modern browsers)
       const vh = window.visualViewport
         ? window.visualViewport.height
         : window.innerHeight;
 
-      // Set CSS variable that we'll use in the container
       document.documentElement.style.setProperty("--app-height", `${vh}px`);
 
-      // Auto-scroll to bottom when keyboard opens
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({
           behavior: "smooth",
