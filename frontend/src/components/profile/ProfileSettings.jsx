@@ -14,7 +14,8 @@ import {
 import toast from "react-hot-toast";
 import { useAuth } from "../../hooks/useAuth";
 import { userAPI } from "../../services/api";
-import { useBackButton } from "../../hooks/useBackButton"; // 🔥 NEW
+import { useBackButton } from "../../hooks/useBackButton";
+import SiteLockToggle from "../common/SiteLockToggle";
 
 const hashPassword = (password) => {
   let hash = 0;
@@ -363,7 +364,29 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                     </div>
                   </div>
                 )}
+                {/* Inside the profile tab, after Install App Button */}
 
+                {/* App Install Button - existing */}
+                <div>
+                  <label
+                    className="block text-xs font-medium mb-1.5"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    App
+                  </label>
+                  <InstallAppButton variant="card" />
+                </div>
+
+                {/* 🔥 NEW: Site Lock Toggle */}
+                <div>
+                  <label
+                    className="block text-xs font-medium mb-1.5"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    Security
+                  </label>
+                  <SiteLockToggle />
+                </div>
                 {activeTab === "password" && (
                   <div className="p-4 sm:p-5 space-y-4">
                     <div

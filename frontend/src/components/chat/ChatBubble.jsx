@@ -368,7 +368,7 @@ const ChatBubble = ({
               )}
             </motion.div>
           </>,
-          document.body, // 🔥 Render directly to body
+          document.body,
         )}
     </div>
   );

@@ -18,16 +18,20 @@ import ProtectedRoute from "./components/common/ProtectedRoute";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import SiteLock from "./components/common/SiteLock";
 import PWAInstallPrompt from "./components/common/PWAInstallPrompt";
-import UpdatePrompt from "./components/common/UpdatePrompt"; // 🔥 NEW
+import UpdatePrompt from "./components/common/UpdatePrompt";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
 import NotFound from "./pages/NotFound";
 
 import "./styles/animations.css";
 
+const LOCK_ENABLED_KEY = "talish_site_lock_enabled";
+const PASSWORD_KEY = "talish_site_password";
+
 function App() {
   const [showInitialLoader, setShowInitialLoader] = useState(true);
   const [siteUnlocked, setSiteUnlocked] = useState(false);
+  const [lockChecked, setLockChecked] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -36,7 +40,20 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  if (showInitialLoader) {
+  // 🔥 Check if site lock is enabled
+  useEffect(() => {
+    const lockEnabled = localStorage.getItem(LOCK_ENABLED_KEY);
+    const hasPassword = localStorage.getItem(PASSWORD_KEY);
+
+    // If lock is explicitly disabled OR no password set, skip lock
+    if (lockEnabled === "false" || !hasPassword) {
+      setSiteUnlocked(true);
+    }
+
+    setLockChecked(true);
+  }, []);
+
+  if (showInitialLoader || !lockChecked) {
     return (
       <ThemeProvider>
         <LoadingScreen onFinished={() => setShowInitialLoader(false)} />
@@ -69,7 +86,6 @@ function App() {
                     <ToastProvider>
                       <ToastNotifications />
                       <PWAInstallPrompt />
-                      {/* 🔥 ADD UPDATE PROMPT */}
                       <UpdatePrompt />
                       <div className="App">
                         <Routes>

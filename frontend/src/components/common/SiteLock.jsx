@@ -11,14 +11,11 @@ import {
 } from "react-icons/hi";
 import TalishLogo from "../../assets/logo";
 
-// 🔑 Master key for resetting password (in case user forgets)
 const MASTER_RESET_KEY = "talishreset2024";
-
-// LocalStorage keys
 const PASSWORD_KEY = "talish_site_password";
 const HINT_KEY = "talish_site_password_hint";
+const LOCK_ENABLED_KEY = "talish_site_lock_enabled"; // 🔥 NEW
 
-// Simple hashing function (for basic protection)
 const hashPassword = (password) => {
   let hash = 0;
   for (let i = 0; i < password.length; i++) {
@@ -30,11 +27,9 @@ const hashPassword = (password) => {
 };
 
 const SiteLock = ({ onUnlock }) => {
-  // Check if password is already set
   const [isFirstTime, setIsFirstTime] = useState(false);
-  const [mode, setMode] = useState("login"); // 'login' | 'setup' | 'reset'
+  const [mode, setMode] = useState("login");
 
-  // Form states
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [hint, setHint] = useState("");
@@ -42,7 +37,6 @@ const SiteLock = ({ onUnlock }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // UI states
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [shake, setShake] = useState(false);
@@ -52,7 +46,6 @@ const SiteLock = ({ onUnlock }) => {
   const [savedHint, setSavedHint] = useState("");
   const [showHint, setShowHint] = useState(false);
 
-  // Check if first time on mount
   useEffect(() => {
     const savedPassword = localStorage.getItem(PASSWORD_KEY);
     const hintFromStorage = localStorage.getItem(HINT_KEY);
@@ -67,7 +60,6 @@ const SiteLock = ({ onUnlock }) => {
     }
   }, []);
 
-  // Handle setup new password
   const handleSetup = async (e) => {
     e.preventDefault();
     setError("");
@@ -89,9 +81,12 @@ const SiteLock = ({ onUnlock }) => {
     setLoading(true);
     await new Promise((r) => setTimeout(r, 500));
 
-    // Save hashed password to localStorage
     const hashed = hashPassword(password);
     localStorage.setItem(PASSWORD_KEY, hashed);
+
+    // 🔥 NEW: Enable site lock by default when setting up
+    localStorage.setItem(LOCK_ENABLED_KEY, "true");
+
     if (hint.trim()) {
       localStorage.setItem(HINT_KEY, hint.trim());
     }
@@ -104,7 +99,6 @@ const SiteLock = ({ onUnlock }) => {
     }, 1000);
   };
 
-  // Handle login
   const handleLogin = async (e) => {
     e.preventDefault();
     if (locked) return;
@@ -145,7 +139,6 @@ const SiteLock = ({ onUnlock }) => {
     setLoading(false);
   };
 
-  // Handle reset password with master key
   const handleReset = async (e) => {
     e.preventDefault();
     setError("");
@@ -160,9 +153,10 @@ const SiteLock = ({ onUnlock }) => {
     setLoading(true);
     await new Promise((r) => setTimeout(r, 500));
 
-    // Clear saved password
+    // Clear all lock data
     localStorage.removeItem(PASSWORD_KEY);
     localStorage.removeItem(HINT_KEY);
+    localStorage.removeItem(LOCK_ENABLED_KEY); // 🔥 NEW
 
     setSuccess("✅ Password reset! Please set a new password.");
     setLoading(false);
@@ -185,7 +179,6 @@ const SiteLock = ({ onUnlock }) => {
       className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden"
       style={{ backgroundColor: "var(--color-bg)" }}
     >
-      {/* Animated background orbs */}
       <motion.div
         animate={{ x: [0, 100, 0], y: [0, -50, 0] }}
         transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
@@ -209,7 +202,6 @@ const SiteLock = ({ onUnlock }) => {
         transition={{ duration: shake ? 0.4 : 0.5 }}
         className="w-full max-w-md relative z-10"
       >
-        {/* Logo */}
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -219,14 +211,12 @@ const SiteLock = ({ onUnlock }) => {
           <TalishLogo size="lg" />
         </motion.div>
 
-        {/* Main Card */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
           className="glass rounded-2xl p-8 shadow-card-hover"
         >
-          {/* Icon */}
           <div className="flex justify-center mb-6">
             <motion.div
               animate={{
@@ -259,7 +249,6 @@ const SiteLock = ({ onUnlock }) => {
             </motion.div>
           </div>
 
-          {/* Title */}
           <div className="text-center mb-6">
             <h1
               className="text-2xl font-display font-bold mb-2"
@@ -280,7 +269,6 @@ const SiteLock = ({ onUnlock }) => {
             </p>
           </div>
 
-          {/* SETUP MODE */}
           {mode === "setup" && (
             <form onSubmit={handleSetup} className="space-y-4">
               <div>
@@ -418,7 +406,6 @@ const SiteLock = ({ onUnlock }) => {
             </form>
           )}
 
-          {/* LOGIN MODE */}
           {mode === "login" && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -487,7 +474,6 @@ const SiteLock = ({ onUnlock }) => {
                 )}
               </button>
 
-              {/* Hint + Reset Options */}
               <div className="flex items-center justify-between text-xs pt-2">
                 {savedHint && (
                   <button
@@ -541,7 +527,6 @@ const SiteLock = ({ onUnlock }) => {
             </form>
           )}
 
-          {/* RESET MODE */}
           {mode === "reset" && (
             <form onSubmit={handleReset} className="space-y-4">
               <div
@@ -640,7 +625,6 @@ const SiteLock = ({ onUnlock }) => {
             </form>
           )}
 
-          {/* Footer */}
           <div
             className="mt-6 pt-6 border-t"
             style={{ borderColor: "var(--color-border)" }}

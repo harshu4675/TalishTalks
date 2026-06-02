@@ -105,10 +105,23 @@ export const chatAPI = {
     api.put(`/chats/${chatId}/disappearing`, data),
 };
 
-// Message endpoints
 export const messageAPI = {
   get: (chatId, params) => api.get(`/messages/${chatId}`, { params }),
-  send: (data) => api.post("/messages/send", data), // already accepts replyTo in data
+  send: (data) => api.post("/messages/send", data),
+  // 🔥 NEW: Send media with progress
+  sendMedia: (formData, onProgress) =>
+    api.post("/messages/send-media", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: (progressEvent) => {
+        const percent = Math.round(
+          (progressEvent.loaded * 100) / progressEvent.total,
+        );
+        if (onProgress) onProgress(percent);
+      },
+    }),
+  // 🔥 NEW: Edit message
+  edit: (messageId, content) =>
+    api.put(`/messages/${messageId}/edit`, { content }),
   markSeen: (chatId) => api.put(`/messages/${chatId}/seen`),
   deleteForMe: (messageId) => api.delete(`/messages/${messageId}/me`),
   deleteForEveryone: (messageId) =>
