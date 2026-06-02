@@ -113,11 +113,6 @@ const createChat = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Clear all messages in a chat (for current user)
-// @route   PUT /api/chats/:chatId/clear
-// @access  Private
-// ============================================
 const clearChat = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -130,7 +125,6 @@ const clearChat = async (req, res) => {
       });
     }
 
-    // Verify user is a participant
     if (!chat.participants.includes(req.user._id)) {
       return res.status(403).json({
         success: false,
@@ -138,13 +132,11 @@ const clearChat = async (req, res) => {
       });
     }
 
-    // Mark all messages as deleted for this user
     await Message.updateMany(
       { chat: chatId },
       { $addToSet: { deletedFor: req.user._id } },
     );
 
-    // Track clear timestamp for this user
     chat.clearedBy = chat.clearedBy.filter(
       (c) => c.user.toString() !== req.user._id.toString(),
     );
@@ -164,15 +156,10 @@ const clearChat = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Set disappearing messages mode
-// @route   PUT /api/chats/:chatId/disappearing
-// @access  Private
-// ============================================
 const setDisappearing = async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { mode } = req.body; // 'on_seen' | 'after_2min' | 'off'
+    const { mode } = req.body;
 
     if (!["on_seen", "after_2min", "off"].includes(mode)) {
       return res.status(400).json({
@@ -202,7 +189,6 @@ const setDisappearing = async (req, res) => {
     };
     await chat.save();
 
-    // Notify other participant via socket
     const io = req.app.get("io");
     if (io) {
       io.to(chatId).emit("disappearing_mode_changed", {
@@ -218,8 +204,8 @@ const setDisappearing = async (req, res) => {
         mode === "off"
           ? "Disappearing messages disabled"
           : mode === "on_seen"
-            ? "Messages will disappear when seen 👁️"
-            : "Messages will disappear 2 min after being seen ⏱️",
+            ? "Messages will disappear when seen "
+            : "Messages will disappear 2 min after being seen ",
       disappearingMessages: chat.disappearingMessages,
     });
   } catch (error) {
@@ -232,11 +218,6 @@ const setDisappearing = async (req, res) => {
 };
 const bcrypt = require("bcryptjs");
 
-// ============================================
-// @desc    Lock a chat with PIN
-// @route   PUT /api/chats/:chatId/lock
-// @access  Private
-// ============================================
 const lockChat = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -262,11 +243,9 @@ const lockChat = async (req, res) => {
         .json({ success: false, message: "Not authorized" });
     }
 
-    // Hash the PIN
     const salt = await bcrypt.genSalt(10);
     const hashedPin = await bcrypt.hash(pin, salt);
 
-    // Save to user's lock data
     const user = await User.findById(req.user._id);
     user.chatLockPin = hashedPin;
     if (!user.lockedChats.includes(chatId)) {
@@ -284,11 +263,6 @@ const lockChat = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Unlock a chat with PIN
-// @route   PUT /api/chats/:chatId/unlock
-// @access  Private
-// ============================================
 const unlockChat = async (req, res) => {
   try {
     const { chatId } = req.params;
