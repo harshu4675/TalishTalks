@@ -297,81 +297,7 @@ const ChatBubble = ({
                 </div>
               )}
 
-              {/* 🔥 MEDIA DISPLAY */}
-              {hasMedia && message.media?.url && (
-                <div
-                  className="relative cursor-pointer"
-                  onClick={() => setShowMediaViewer(true)}
-                >
-                  {isImage ? (
-                    <img
-                      src={message.media.url}
-                      alt="Sent media"
-                      className="w-full max-w-[280px] max-h-[300px] object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="relative">
-                      <video
-                        src={message.media.url}
-                        className="w-full max-w-[280px] max-h-[300px] object-cover"
-                        muted
-                        playsInline
-                      />
-                      {/* Play overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                        <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                          <HiOutlinePlay className="text-2xl text-black ml-1" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Auto-delete countdown */}
-                  {timeLeft !== null && (
-                    <div
-                      className="absolute top-2 left-2 px-2 py-1 rounded-full text-[10px] font-semibold backdrop-blur-md flex items-center gap-1"
-                      style={{
-                        backgroundColor: "rgba(0,0,0,0.6)",
-                        color: "white",
-                      }}
-                    >
-                      ⏱️ {timeLeft}s
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Message text + Time */}
-              <div
-                className="px-3 py-2"
-                style={{
-                  paddingRight: "2rem",
-                  paddingTop:
-                    hasMedia && !message.content ? "0.5rem" : "0.5rem",
-                  paddingBottom: "0.5rem",
-                }}
-              >
-                {message.content && (
-                  <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                    {message.content}
-                  </p>
-                )}
-
-                <div
-                  className="flex items-center gap-1.5 mt-1 text-[10px]"
-                  style={{
-                    color: isOwn
-                      ? "rgba(255, 255, 255, 0.75)"
-                      : "var(--color-textMuted)",
-                  }}
-                >
-                  {message.edited && <span className="italic">edited</span>}
-                  <span>{formatTime(message.createdAt)}</span>
-                  <StatusIcon />
-                </div>
-              </div>
-              {/* 🔥 MEDIA DISPLAY */}
+              {/* 🔥 MEDIA DISPLAY (single block - with upload progress) */}
               {hasMedia && message.media?.url && (
                 <div
                   className="relative cursor-pointer"
@@ -402,7 +328,7 @@ const ChatBubble = ({
                     </div>
                   )}
 
-                  {/* 🔥 NEW: Upload Progress Overlay */}
+                  {/* Upload Progress Overlay */}
                   {message.isOptimistic && (
                     <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
                       <div className="w-16 h-16 mb-3">
@@ -453,6 +379,36 @@ const ChatBubble = ({
                   )}
                 </div>
               )}
+
+              {/* Message text + Time */}
+              <div
+                className="px-3 py-2"
+                style={{
+                  paddingRight: "2rem",
+                  paddingTop:
+                    hasMedia && !message.content ? "0.5rem" : "0.5rem",
+                  paddingBottom: "0.5rem",
+                }}
+              >
+                {message.content && (
+                  <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                    {message.content}
+                  </p>
+                )}
+
+                <div
+                  className="flex items-center gap-1.5 mt-1 text-[10px]"
+                  style={{
+                    color: isOwn
+                      ? "rgba(255, 255, 255, 0.75)"
+                      : "var(--color-textMuted)",
+                  }}
+                >
+                  {message.edited && <span className="italic">edited</span>}
+                  <span>{formatTime(message.createdAt)}</span>
+                  <StatusIcon />
+                </div>
+              </div>
             </div>
 
             {/* Menu Button */}
