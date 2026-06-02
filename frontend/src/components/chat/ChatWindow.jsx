@@ -185,7 +185,93 @@ const ChatWindow = ({ chat, onBack }) => {
       setSending(false);
     }
   };
+  // 🔥 NEW: Send media (image/video)
+  const handleSendMedia = async (file, replyToData = null) => {
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const isVideo = file.type.startsWith("video/");
+    const tempUrl = URL.createObjectURL(file);
 
+    // Optimistic message
+    const optimisticMessage = {
+      _id: tempId,
+      chat: chat._id,
+      sender: {
+        _id: user._id,
+        fullName: user.fullName,
+        username: user.username,
+        avatar: user.avatar,
+      },
+      content: "",
+      messageType: isVideo ? "video" : "image",
+      media: {
+        url: tempUrl,
+        type: isVideo ? "video" : "image",
+      },
+      status: "sending",
+      createdAt: new Date().toISOString(),
+      isOptimistic: true,
+      replyTo: replyToData,
+    };
+
+    addMessage(optimisticMessage);
+    setReplyTo(null);
+    setSending(true);
+
+    const loadingToast = toast.loading(
+      `Uploading ${isVideo ? "video" : "photo"}...`,
+    );
+
+    try {
+      const formData = new FormData();
+      formData.append("media", file);
+      formData.append("chatId", chat._id);
+      if (replyToData?._id) {
+        formData.append("replyTo", replyToData._id);
+      }
+
+      const res = await messageAPI.sendMedia(formData, (progress) => {
+        // Update progress if needed
+        toast.loading(`Uploading... ${progress}%`, { id: loadingToast });
+      });
+
+      const realMessage = res.data.data;
+
+      // Replace optimistic with real message
+      setMessages((prev) => {
+        const filtered = prev.filter(
+          (m) => m._id !== tempId && m._id !== realMessage._id,
+        );
+        return [...filtered, realMessage];
+      });
+      updateLastMessage(chat._id, realMessage);
+
+      URL.revokeObjectURL(tempUrl);
+      toast.success(
+        `${isVideo ? "Video" : "Photo"} sent! ⏱️ Auto-deletes in 2 min`,
+        {
+          id: loadingToast,
+        },
+      );
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m._id !== tempId));
+      URL.revokeObjectURL(tempUrl);
+      toast.error(err.response?.data?.message || "Failed to send media", {
+        id: loadingToast,
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // 🔥 NEW: Edit message
+  const handleEdit = async (messageId, newContent) => {
+    try {
+      await messageAPI.edit(messageId, newContent);
+      toast.success("Message edited");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to edit");
+    }
+  };
   const handleTypingStart = () => emitTypingStart(chat._id, otherUser._id);
   const handleTypingStop = () => emitTypingStop(chat._id, otherUser._id);
 
@@ -359,6 +445,7 @@ const ChatWindow = ({ chat, onBack }) => {
                           onDeleteForMe={handleDeleteForMe}
                           onDeleteForEveryone={handleDeleteForEveryone}
                           onReply={handleReply}
+                          onEdit={handleEdit}
                         />
                       );
                     })}
@@ -382,6 +469,7 @@ const ChatWindow = ({ chat, onBack }) => {
       <div className="flex-shrink-0 z-30">
         <ChatInput
           onSend={handleSend}
+          onSendMedia={handleSendMedia}
           onTypingStart={handleTypingStart}
           onTypingStop={handleTypingStop}
           disabled={false}
