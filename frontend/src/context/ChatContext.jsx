@@ -84,6 +84,13 @@ export const ChatProvider = ({ children }) => {
     );
   }, []);
 
+  // 🔥 NEW: Update entire message (for edits)
+  const updateMessage = useCallback((messageId, updatedMessage) => {
+    setMessages((prev) =>
+      prev.map((m) => (m._id === messageId ? updatedMessage : m)),
+    );
+  }, []);
+
   // Remove deleted message COMPLETELY
   const markMessageDeleted = useCallback((messageId) => {
     setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
@@ -156,10 +163,9 @@ export const ChatProvider = ({ children }) => {
           setMessages((prev) => {
             const exists = prev.some((m) => m._id === message._id);
             if (exists) {
-              // Update existing
               return prev.map((m) => (m._id === message._id ? message : m));
             }
-            return prev; // Don't add - optimistic update handles it
+            return prev;
           });
           return;
         }
@@ -202,6 +208,29 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
+    // 🔥 NEW: Handle message edits in real-time
+    const handleMessageEdited = ({
+      chatId,
+      messageId,
+      message: updatedMessage,
+    }) => {
+      // Update in active chat messages
+      if (activeChat?._id === chatId) {
+        setMessages((prev) =>
+          prev.map((m) => (m._id === messageId ? updatedMessage : m)),
+        );
+      }
+
+      // Update last message in chats list if this is the last message
+      setChats((prev) =>
+        prev.map((c) =>
+          c._id === chatId && c.lastMessage?._id === messageId
+            ? { ...c, lastMessage: updatedMessage }
+            : c,
+        ),
+      );
+    };
+
     const handleTypingStart = ({ chatId, userId }) => {
       setTypingUsers((prev) => ({ ...prev, [chatId]: userId }));
     };
@@ -227,11 +256,13 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
+    // Register listeners
     socket.on("new_message", handleNewMessage);
     socket.on("message_notification", handleMessageNotification);
     socket.on("messages_seen", handleMessagesSeen);
     socket.on("message_deleted", handleMessageDeleted);
     socket.on("messages_auto_deleted", handleMessagesAutoDeleted);
+    socket.on("message_edited", handleMessageEdited); // 🔥 NEW
     socket.on("typing_start", handleTypingStart);
     socket.on("typing_stop", handleTypingStop);
     socket.on("disappearing_mode_changed", handleDisappearingChanged);
@@ -242,6 +273,7 @@ export const ChatProvider = ({ children }) => {
       socket.off("messages_seen", handleMessagesSeen);
       socket.off("message_deleted", handleMessageDeleted);
       socket.off("messages_auto_deleted", handleMessagesAutoDeleted);
+      socket.off("message_edited", handleMessageEdited); // 🔥 NEW
       socket.off("typing_start", handleTypingStart);
       socket.off("typing_stop", handleTypingStop);
       socket.off("disappearing_mode_changed", handleDisappearingChanged);
@@ -267,6 +299,7 @@ export const ChatProvider = ({ children }) => {
     messages,
     setMessages,
     addMessage,
+    updateMessage, // 🔥 NEW: Expose update function
     updateMessageStatus,
     removeMessage,
     markMessageDeleted,
