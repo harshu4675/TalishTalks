@@ -46,7 +46,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // 🔥 NEW: Handle device back button - close modal instead of exiting app
   useBackButton(isOpen, onClose);
 
   const handleSaveProfile = async () => {
@@ -362,31 +361,20 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                       </label>
                       <InstallAppButton variant="card" />
                     </div>
+
+                    {/* 🔥 Site Lock Toggle - now properly inside profile tab */}
+                    <div>
+                      <label
+                        className="block text-xs font-medium mb-1.5"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
+                        Security
+                      </label>
+                      <SiteLockToggle />
+                    </div>
                   </div>
                 )}
-                {/* Inside the profile tab, after Install App Button */}
 
-                {/* App Install Button - existing */}
-                <div>
-                  <label
-                    className="block text-xs font-medium mb-1.5"
-                    style={{ color: "var(--color-textMuted)" }}
-                  >
-                    App
-                  </label>
-                  <InstallAppButton variant="card" />
-                </div>
-
-                {/* 🔥 NEW: Site Lock Toggle */}
-                <div>
-                  <label
-                    className="block text-xs font-medium mb-1.5"
-                    style={{ color: "var(--color-textMuted)" }}
-                  >
-                    Security
-                  </label>
-                  <SiteLockToggle />
-                </div>
                 {activeTab === "password" && (
                   <div className="p-4 sm:p-5 space-y-4">
                     <div

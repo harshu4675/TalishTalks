@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
 } from "react";
+import toast from "react-hot-toast";
 import { chatAPI } from "../services/api";
 import { AuthContext } from "./AuthContext";
 import { SocketContext } from "./SocketContext";
@@ -84,7 +85,7 @@ export const ChatProvider = ({ children }) => {
     );
   }, []);
 
-  // 🔥 NEW: Update entire message (for edits)
+  // Update entire message (for edits)
   const updateMessage = useCallback((messageId, updatedMessage) => {
     setMessages((prev) =>
       prev.map((m) => (m._id === messageId ? updatedMessage : m)),
@@ -208,25 +209,48 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
-    // 🔥 NEW: Handle message edits in real-time
+    // Handle message edits in real-time
     const handleMessageEdited = ({
       chatId,
       messageId,
       message: updatedMessage,
     }) => {
-      // Update in active chat messages
       if (activeChat?._id === chatId) {
         setMessages((prev) =>
           prev.map((m) => (m._id === messageId ? updatedMessage : m)),
         );
       }
 
-      // Update last message in chats list if this is the last message
       setChats((prev) =>
         prev.map((c) =>
           c._id === chatId && c.lastMessage?._id === messageId
             ? { ...c, lastMessage: updatedMessage }
             : c,
+        ),
+      );
+    };
+
+    // 🔥 NEW: Handle chat cleared by other user (both sides)
+    const handleChatCleared = ({ chatId, clearedBy, clearedByName }) => {
+      const isClearedByMe = clearedBy === user?._id;
+
+      // Clear messages if it's the active chat
+      if (activeChat?._id === chatId) {
+        setMessages([]);
+
+        // Show notification only if cleared by OTHER user
+        if (!isClearedByMe && clearedByName) {
+          toast(`🧹 Chat cleared by ${clearedByName}`, {
+            duration: 3000,
+            icon: "ℹ️",
+          });
+        }
+      }
+
+      // Update chats list - reset last message and unread count
+      setChats((prev) =>
+        prev.map((c) =>
+          c._id === chatId ? { ...c, lastMessage: null, unreadCount: 0 } : c,
         ),
       );
     };
@@ -256,13 +280,14 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
-    // Register listeners
+    // Register all listeners
     socket.on("new_message", handleNewMessage);
     socket.on("message_notification", handleMessageNotification);
     socket.on("messages_seen", handleMessagesSeen);
     socket.on("message_deleted", handleMessageDeleted);
     socket.on("messages_auto_deleted", handleMessagesAutoDeleted);
-    socket.on("message_edited", handleMessageEdited); // 🔥 NEW
+    socket.on("message_edited", handleMessageEdited);
+    socket.on("chat_cleared", handleChatCleared); // 🔥 NEW
     socket.on("typing_start", handleTypingStart);
     socket.on("typing_stop", handleTypingStop);
     socket.on("disappearing_mode_changed", handleDisappearingChanged);
@@ -273,7 +298,8 @@ export const ChatProvider = ({ children }) => {
       socket.off("messages_seen", handleMessagesSeen);
       socket.off("message_deleted", handleMessageDeleted);
       socket.off("messages_auto_deleted", handleMessagesAutoDeleted);
-      socket.off("message_edited", handleMessageEdited); // 🔥 NEW
+      socket.off("message_edited", handleMessageEdited);
+      socket.off("chat_cleared", handleChatCleared); // 🔥 NEW
       socket.off("typing_start", handleTypingStart);
       socket.off("typing_stop", handleTypingStop);
       socket.off("disappearing_mode_changed", handleDisappearingChanged);
@@ -281,6 +307,7 @@ export const ChatProvider = ({ children }) => {
   }, [
     socket,
     activeChat,
+    user,
     addMessage,
     updateLastMessage,
     incrementUnread,
@@ -299,7 +326,7 @@ export const ChatProvider = ({ children }) => {
     messages,
     setMessages,
     addMessage,
-    updateMessage, // 🔥 NEW: Expose update function
+    updateMessage,
     updateMessageStatus,
     removeMessage,
     markMessageDeleted,

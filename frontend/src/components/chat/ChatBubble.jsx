@@ -371,6 +371,88 @@ const ChatBubble = ({
                   <StatusIcon />
                 </div>
               </div>
+              {/* 🔥 MEDIA DISPLAY */}
+              {hasMedia && message.media?.url && (
+                <div
+                  className="relative cursor-pointer"
+                  onClick={() =>
+                    !message.isOptimistic && setShowMediaViewer(true)
+                  }
+                >
+                  {isImage ? (
+                    <img
+                      src={message.media.url}
+                      alt="Sent media"
+                      className="w-full max-w-[280px] max-h-[300px] object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="relative">
+                      <video
+                        src={message.media.url}
+                        className="w-full max-w-[280px] max-h-[300px] object-cover"
+                        muted
+                        playsInline
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                          <HiOutlinePlay className="text-2xl text-black ml-1" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 🔥 NEW: Upload Progress Overlay */}
+                  {message.isOptimistic && (
+                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 mb-3">
+                        <svg className="w-full h-full -rotate-90">
+                          <circle
+                            cx="32"
+                            cy="32"
+                            r="28"
+                            stroke="rgba(255,255,255,0.2)"
+                            strokeWidth="4"
+                            fill="none"
+                          />
+                          <circle
+                            cx="32"
+                            cy="32"
+                            r="28"
+                            stroke="white"
+                            strokeWidth="4"
+                            fill="none"
+                            strokeDasharray={2 * Math.PI * 28}
+                            strokeDashoffset={
+                              2 *
+                              Math.PI *
+                              28 *
+                              (1 - (message.uploadProgress || 0) / 100)
+                            }
+                            className="transition-all duration-300"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-white text-xs font-semibold">
+                        {message.uploadProgress || 0}%
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Auto-delete countdown */}
+                  {timeLeft !== null && !message.isOptimistic && (
+                    <div
+                      className="absolute top-2 left-2 px-2 py-1 rounded-full text-[10px] font-semibold backdrop-blur-md flex items-center gap-1"
+                      style={{
+                        backgroundColor: "rgba(0,0,0,0.6)",
+                        color: "white",
+                      }}
+                    >
+                      ⏱️ {timeLeft}s
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Menu Button */}

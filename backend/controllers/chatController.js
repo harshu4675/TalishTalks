@@ -113,6 +113,11 @@ const createChat = async (req, res) => {
   }
 };
 
+// ============================================
+// @desc    Clear all messages in a chat (for EVERYONE)
+// @route   PUT /api/chats/:chatId/clear
+// @access  Private
+// ============================================
 const clearChat = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -132,20 +137,45 @@ const clearChat = async (req, res) => {
       });
     }
 
-    await Message.updateMany(
-      { chat: chatId },
-      { $addToSet: { deletedFor: req.user._id } },
-    );
+    // 🔥 Get all messages in this chat
+    const messages = await Message.find({ chat: chatId });
 
-    chat.clearedBy = chat.clearedBy.filter(
-      (c) => c.user.toString() !== req.user._id.toString(),
-    );
-    chat.clearedBy.push({ user: req.user._id, clearedAt: new Date() });
+    // 🔥 Delete media from Cloudinary
+    const { deleteFromCloudinary } = require("../utils/cloudinary");
+    for (const msg of messages) {
+      if (msg.media?.publicId) {
+        await deleteFromCloudinary(msg.media.publicId, msg.messageType);
+      }
+    }
+
+    // 🔥 HARD DELETE all messages from DB
+    const result = await Message.deleteMany({ chat: chatId });
+    console.log(`🗑️  Chat cleared - deleted ${result.deletedCount} messages`);
+
+    // Reset chat's last message
+    chat.lastMessage = null;
+
+    // Reset unread counts for all participants
+    chat.participants.forEach((participantId) => {
+      chat.unreadCount.set(participantId.toString(), 0);
+    });
+
     await chat.save();
+
+    // 🔥 Notify BOTH participants via socket
+    const io = req.app.get("io");
+    if (io) {
+      io.to(chatId).emit("chat_cleared", {
+        chatId,
+        clearedBy: req.user._id,
+        clearedByName: req.user.fullName,
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Chat cleared successfully",
+      message: "Chat cleared for everyone",
+      deletedCount: result.deletedCount,
     });
   } catch (error) {
     console.error("Clear chat error:", error.message);

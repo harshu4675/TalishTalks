@@ -17,11 +17,15 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
   const otherUser = chat.otherUser;
 
   const handleClearChat = async () => {
-    if (!window.confirm("Clear entire chat history? This cannot be undone."))
+    if (
+      !window.confirm(
+        "⚠️ Clear entire chat for BOTH users? All messages will be permanently deleted from both sides. This cannot be undone.",
+      )
+    )
       return;
     try {
       await chatAPI.clearChat(chat._id);
-      toast.success("Chat cleared 🧹");
+      toast.success("Chat cleared for everyone 🧹");
       setShowMenu(false);
       if (onChatCleared) onChatCleared();
     } catch (err) {

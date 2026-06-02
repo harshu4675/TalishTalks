@@ -185,13 +185,13 @@ const ChatWindow = ({ chat, onBack }) => {
       setSending(false);
     }
   };
-  // 🔥 NEW: Send media (image/video)
+  // 🔥 FIXED: Send media in BACKGROUND - doesn't block chat
   const handleSendMedia = async (file, replyToData = null) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const isVideo = file.type.startsWith("video/");
     const tempUrl = URL.createObjectURL(file);
 
-    // Optimistic message
+    // Show optimistic message immediately
     const optimisticMessage = {
       _id: tempId,
       chat: chat._id,
@@ -210,57 +210,65 @@ const ChatWindow = ({ chat, onBack }) => {
       status: "sending",
       createdAt: new Date().toISOString(),
       isOptimistic: true,
+      uploadProgress: 0,
       replyTo: replyToData,
     };
 
     addMessage(optimisticMessage);
     setReplyTo(null);
-    setSending(true);
+    // 🔥 DON'T set sending=true (allow continued typing)
 
-    const loadingToast = toast.loading(
-      `Uploading ${isVideo ? "video" : "photo"}...`,
-    );
-
-    try {
-      const formData = new FormData();
-      formData.append("media", file);
-      formData.append("chatId", chat._id);
-      if (replyToData?._id) {
-        formData.append("replyTo", replyToData._id);
-      }
-
-      const res = await messageAPI.sendMedia(formData, (progress) => {
-        // Update progress if needed
-        toast.loading(`Uploading... ${progress}%`, { id: loadingToast });
-      });
-
-      const realMessage = res.data.data;
-
-      // Replace optimistic with real message
-      setMessages((prev) => {
-        const filtered = prev.filter(
-          (m) => m._id !== tempId && m._id !== realMessage._id,
-        );
-        return [...filtered, realMessage];
-      });
-      updateLastMessage(chat._id, realMessage);
-
-      URL.revokeObjectURL(tempUrl);
-      toast.success(
-        `${isVideo ? "Video" : "Photo"} sent! ⏱️ Auto-deletes in 2 min`,
-        {
-          id: loadingToast,
-        },
+    // 🔥 Upload in background - non-blocking
+    (async () => {
+      const loadingToast = toast.loading(
+        `Uploading ${isVideo ? "video" : "photo"}...`,
+        { duration: Infinity },
       );
-    } catch (err) {
-      setMessages((prev) => prev.filter((m) => m._id !== tempId));
-      URL.revokeObjectURL(tempUrl);
-      toast.error(err.response?.data?.message || "Failed to send media", {
-        id: loadingToast,
-      });
-    } finally {
-      setSending(false);
-    }
+
+      try {
+        const formData = new FormData();
+        formData.append("media", file);
+        formData.append("chatId", chat._id);
+        if (replyToData?._id) {
+          formData.append("replyTo", replyToData._id);
+        }
+
+        const res = await messageAPI.sendMedia(formData, (progress) => {
+          // Update progress on optimistic message
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === tempId ? { ...m, uploadProgress: progress } : m,
+            ),
+          );
+
+          toast.loading(`Uploading... ${progress}%`, { id: loadingToast });
+        });
+
+        const realMessage = res.data.data;
+
+        // Replace optimistic with real message
+        setMessages((prev) => {
+          const filtered = prev.filter(
+            (m) => m._id !== tempId && m._id !== realMessage._id,
+          );
+          return [...filtered, realMessage];
+        });
+        updateLastMessage(chat._id, realMessage);
+
+        URL.revokeObjectURL(tempUrl);
+        toast.success(
+          `${isVideo ? "Video" : "Photo"} sent! ⏱️ Auto-deletes in 2 min`,
+          { id: loadingToast, duration: 3000 },
+        );
+      } catch (err) {
+        setMessages((prev) => prev.filter((m) => m._id !== tempId));
+        URL.revokeObjectURL(tempUrl);
+        toast.error(err.response?.data?.message || "Failed to send media", {
+          id: loadingToast,
+        });
+      }
+    })();
+    // 🔥 Returns immediately - chat continues to work!
   };
 
   // 🔥 NEW: Edit message
