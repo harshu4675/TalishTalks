@@ -8,6 +8,7 @@ const {
   sendMediaMessage,
   editMessage,
   markSeen,
+  leaveCleanup,
   deleteForMe,
   deleteForEveryone,
   bulkDeleteForMe,
@@ -21,10 +22,14 @@ router.post("/send", protect, sendMessage);
 router.post("/send-media", protect, handleUpload, sendMediaMessage);
 router.put("/:messageId/edit", protect, editMessage);
 router.put("/:chatId/seen", protect, markSeen);
+
+// 🔥 NEW: Leave cleanup route (Option A disappearing messages)
+router.post("/:chatId/leave-cleanup", protect, leaveCleanup);
+
 router.delete("/:messageId/me", protect, deleteForMe);
 router.delete("/:messageId/everyone", protect, deleteForEveryone);
 
-// 🔥 NEW BULK DELETE ROUTES
+// BULK DELETE ROUTES
 router.post("/bulk-delete-me", protect, bulkDeleteForMe);
 router.post("/bulk-delete-everyone", protect, bulkDeleteForEveryone);
 
