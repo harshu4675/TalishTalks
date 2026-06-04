@@ -5,7 +5,7 @@ const { sendPushToUser } = require("../utils/pushService");
 const { deleteFromCloudinary } = require("../utils/cloudinary");
 
 // ============================================
-// 🔥 NEW: Helper - check if either party blocked the other
+// 🔥 Helper - check if either party blocked the other
 // ============================================
 const checkBlockStatus = async (senderId, recipientId) => {
   const [sender, recipient] = await Promise.all([
@@ -133,7 +133,6 @@ const sendMessage = async (req, res) => {
       (p) => p.toString() !== req.user._id.toString(),
     );
 
-    // 🔥 NEW: Block check
     if (otherParticipantId) {
       const blockStatus = await checkBlockStatus(
         req.user._id,
@@ -189,7 +188,6 @@ const sendMessage = async (req, res) => {
         },
       });
 
-      // 🔥 NEW: Respect mute - skip push if recipient muted this chat
       const recipient =
         await User.findById(otherParticipantId).select("mutedChats");
       const isMuted = recipient?.mutedChats?.some(
@@ -233,8 +231,6 @@ const sendMessage = async (req, res) => {
 
 // ============================================
 // @desc    Send a media message (image/video)
-// @route   POST /api/messages/send-media
-// @access  Private
 // ============================================
 const sendMediaMessage = async (req, res) => {
   try {
@@ -281,7 +277,6 @@ const sendMediaMessage = async (req, res) => {
       (p) => p.toString() !== req.user._id.toString(),
     );
 
-    // 🔥 NEW: Block check (delete uploaded file if blocked)
     if (otherParticipantId) {
       const blockStatus = await checkBlockStatus(
         req.user._id,
@@ -302,7 +297,6 @@ const sendMediaMessage = async (req, res) => {
     const isVideo = req.file.mimetype.startsWith("video/");
     const messageType = isVideo ? "video" : "image";
 
-    // Auto-delete after 2 minutes
     const mediaAutoDeleteAt = new Date(Date.now() + 2 * 60 * 1000);
 
     let thumbnail = "";
@@ -346,7 +340,6 @@ const sendMediaMessage = async (req, res) => {
     chat.lastMessage = message._id;
     await chat.save();
 
-    // Schedule auto-delete after 2 minutes
     setTimeout(
       async () => {
         try {
@@ -393,7 +386,6 @@ const sendMediaMessage = async (req, res) => {
         },
       });
 
-      // 🔥 NEW: Respect mute
       const recipient =
         await User.findById(otherParticipantId).select("mutedChats");
       const isMuted = recipient?.mutedChats?.some(
@@ -430,8 +422,6 @@ const sendMediaMessage = async (req, res) => {
 
 // ============================================
 // @desc    Edit a message
-// @route   PUT /api/messages/:messageId/edit
-// @access  Private
 // ============================================
 const editMessage = async (req, res) => {
   try {
@@ -538,7 +528,6 @@ const markSeen = async (req, res) => {
       deletedForEveryone: false,
     });
 
-    // 🔥 NEW: Also clear "marked unread" flag when user opens the chat
     const user = await User.findById(req.user._id);
     if (user.markedUnreadChats.some((id) => id.toString() === chatId)) {
       user.markedUnreadChats = user.markedUnreadChats.filter(
@@ -570,64 +559,7 @@ const markSeen = async (req, res) => {
     chat.unreadCount.set(req.user._id.toString(), 0);
     await chat.save();
 
-    if (
-      chat.disappearingMessages?.mode &&
-      chat.disappearingMessages.mode !== "off"
-    ) {
-      const messageIds = messagesToUpdate.map((m) => m._id);
-      const mode = chat.disappearingMessages.mode;
-
-      let delayMs = 0;
-
-      if (mode === "on_seen") {
-        delayMs = 5 * 1000;
-      } else if (mode === "after_2min") {
-        delayMs = 2 * 60 * 1000;
-      }
-
-      if (delayMs > 0) {
-        const io = req.app.get("io");
-
-        setTimeout(async () => {
-          try {
-            const messagesToDelete = await Message.find({
-              _id: { $in: messageIds },
-            });
-
-            for (const msg of messagesToDelete) {
-              if (msg.media?.publicId) {
-                await deleteFromCloudinary(msg.media.publicId, msg.messageType);
-              }
-            }
-
-            const result = await Message.deleteMany({
-              _id: { $in: messageIds },
-            });
-
-            if (io) {
-              messageIds.forEach((msgId) => {
-                io.to(chatId).emit("message_deleted", {
-                  chatId,
-                  messageId: msgId,
-                  disappeared: true,
-                  hardDeleted: true,
-                });
-              });
-            }
-
-            console.log(
-              `🗑️  PERMANENTLY DELETED ${result.deletedCount} disappearing message(s)`,
-            );
-          } catch (err) {
-            console.error("Hard delete error:", err.message);
-          }
-        }, delayMs);
-
-        console.log(
-          `⏱️  Scheduled ${messageIds.length} message(s) for deletion in ${delayMs}ms`,
-        );
-      }
-    }
+    // 🔥 REMOVED: Disappearing logic moved to leaveCleanup endpoint
 
     const io = req.app.get("io");
     if (io) {
@@ -649,6 +581,110 @@ const markSeen = async (req, res) => {
       success: false,
       message: "Server error",
     });
+  }
+};
+
+// ============================================
+// 🔥 NEW: Cleanup messages when user leaves chat
+// (Option A - deletes only for the leaver, not sender)
+// @route   POST /api/messages/:chatId/leave-cleanup
+// @access  Private
+// ============================================
+const leaveCleanup = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Chat not found" });
+    }
+
+    if (!chat.participants.includes(req.user._id)) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Not authorized" });
+    }
+
+    const mode = chat.disappearingMessages?.mode;
+    if (!mode || mode === "off") {
+      return res.status(200).json({
+        success: true,
+        message: "No cleanup needed",
+        count: 0,
+      });
+    }
+
+    // Find messages the user has SEEN (received from others)
+    const messagesToDelete = await Message.find({
+      chat: chatId,
+      sender: { $ne: req.user._id }, // not their own
+      status: "seen", // they already saw it
+      deletedFor: { $ne: req.user._id }, // not already deleted for them
+      deletedForEveryone: false,
+    });
+
+    if (messagesToDelete.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No messages to clean up",
+        count: 0,
+      });
+    }
+
+    const messageIds = messagesToDelete.map((m) => m._id);
+    const delayMs = mode === "on_seen" ? 0 : 2 * 60 * 1000;
+
+    const performDelete = async () => {
+      try {
+        await Message.updateMany(
+          { _id: { $in: messageIds } },
+          { $addToSet: { deletedFor: req.user._id } },
+        );
+
+        // Hard delete if both users deleted
+        for (const msgId of messageIds) {
+          const msg = await Message.findById(msgId);
+          if (!msg) continue;
+
+          const allDeleted = chat.participants.every((p) =>
+            msg.deletedFor.some((d) => d.toString() === p.toString()),
+          );
+
+          if (allDeleted) {
+            if (msg.media?.publicId) {
+              await deleteFromCloudinary(msg.media.publicId, msg.messageType);
+            }
+            await Message.findByIdAndDelete(msgId);
+          }
+        }
+
+        console.log(
+          `🗑️  Leave cleanup: deleted ${messageIds.length} message(s) for user ${req.user._id}`,
+        );
+      } catch (err) {
+        console.error("Leave cleanup error:", err.message);
+      }
+    };
+
+    if (delayMs === 0) {
+      await performDelete();
+    } else {
+      setTimeout(performDelete, delayMs);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        delayMs === 0
+          ? `Cleaned up ${messageIds.length} message(s)`
+          : `Scheduled cleanup in 2 min for ${messageIds.length} message(s)`,
+      count: messageIds.length,
+    });
+  } catch (error) {
+    console.error("Leave cleanup error:", error.message);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -757,9 +793,7 @@ const deleteForEveryone = async (req, res) => {
 };
 
 // ============================================
-// 🔥 NEW: Bulk delete messages (for me)
-// @route   POST /api/messages/bulk-delete-me
-// @access  Private
+// 🔥 Bulk delete messages (for me)
 // ============================================
 const bulkDeleteForMe = async (req, res) => {
   try {
@@ -783,7 +817,6 @@ const bulkDeleteForMe = async (req, res) => {
         deletedCount++;
       }
 
-      // Hard-delete if both users deleted
       const chat = await Chat.findById(message.chat);
       if (chat) {
         const allDeleted = chat.participants.every((p) =>
@@ -816,9 +849,7 @@ const bulkDeleteForMe = async (req, res) => {
 };
 
 // ============================================
-// 🔥 NEW: Bulk delete messages (for everyone)
-// @route   POST /api/messages/bulk-delete-everyone
-// @access  Private
+// 🔥 Bulk delete messages (for everyone)
 // ============================================
 const bulkDeleteForEveryone = async (req, res) => {
   try {
@@ -839,7 +870,6 @@ const bulkDeleteForEveryone = async (req, res) => {
       const message = await Message.findById(messageId);
       if (!message) continue;
 
-      // Only own messages can be deleted for everyone
       if (message.sender.toString() !== req.user._id.toString()) continue;
 
       const chatIdStr = message.chat.toString();
@@ -854,7 +884,6 @@ const bulkDeleteForEveryone = async (req, res) => {
       deletedCount++;
     }
 
-    // Emit one batched event per chat
     if (io) {
       for (const [chatId, msgIds] of Object.entries(chatBuckets)) {
         msgIds.forEach((mId) => {
@@ -942,6 +971,7 @@ module.exports = {
   sendMediaMessage,
   editMessage,
   markSeen,
+  leaveCleanup,
   deleteForMe,
   deleteForEveryone,
   bulkDeleteForMe,

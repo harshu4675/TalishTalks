@@ -33,7 +33,9 @@ const ChatWindow = ({ chat, onBack }) => {
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
 
-  // 🔥 Phase 8: Multi-select state
+  // 🔥 Track which chat we're in for cleanup
+  const currentChatIdRef = useRef(chat?._id);
+
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -42,26 +44,81 @@ const ChatWindow = ({ chat, onBack }) => {
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
 
-  // 🔥 Phase 7: Block state
   const iBlockedThem = chat.iBlockedThem || false;
   const theyBlockedMe = chat.theyBlockedMe || false;
   const isBlocked = iBlockedThem || theyBlockedMe;
+
+  // 🔥 NEW: Cleanup function — called when leaving chat
+  const handleLeaveCleanup = useCallback(async (chatId) => {
+    if (!chatId) return;
+    try {
+      await messageAPI.leaveCleanup(chatId);
+    } catch (err) {
+      console.error("Leave cleanup failed:", err);
+    }
+  }, []);
+
+  // 🔥 Wrap onBack to trigger cleanup
+  const handleBackWithCleanup = useCallback(() => {
+    handleLeaveCleanup(currentChatIdRef.current);
+    if (onBack) onBack();
+  }, [onBack, handleLeaveCleanup]);
 
   useBackButton(!!chat, () => {
     if (isSelectMode) {
       exitSelectMode();
       return;
     }
-    if (onBack) onBack();
+    handleBackWithCleanup();
   });
 
-  // 🔥 Phase 8: Enter select mode from long-press or menu
+  // 🔥 Cleanup on unmount or chat change
+  useEffect(() => {
+    currentChatIdRef.current = chat?._id;
+
+    return () => {
+      // When component unmounts OR chat changes, cleanup old chat
+      if (currentChatIdRef.current) {
+        handleLeaveCleanup(currentChatIdRef.current);
+      }
+    };
+  }, [chat?._id, handleLeaveCleanup]);
+
+  // 🔥 Cleanup on browser close / tab close
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (currentChatIdRef.current) {
+        // Use sendBeacon for reliability on page close
+        const token = localStorage.getItem("talish_token");
+        const url = `${
+          import.meta.env.VITE_API_URL || "http://localhost:5000/api"
+        }/messages/${currentChatIdRef.current}/leave-cleanup`;
+
+        const blob = new Blob([JSON.stringify({})], {
+          type: "application/json",
+        });
+
+        // sendBeacon doesn't support headers, so we use fetch with keepalive
+        fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
   const handleEnterSelectMode = useCallback((messageId) => {
     setIsSelectMode(true);
     setSelectedMessages(new Set([messageId]));
   }, []);
 
-  // 🔥 Phase 8: Toggle message selection
   const handleSelectMessage = useCallback((messageId) => {
     setSelectedMessages((prev) => {
       const next = new Set(prev);
@@ -70,7 +127,6 @@ const ChatWindow = ({ chat, onBack }) => {
       } else {
         next.add(messageId);
       }
-      // Auto-exit if nothing selected
       if (next.size === 0) {
         setIsSelectMode(false);
       }
@@ -78,13 +134,11 @@ const ChatWindow = ({ chat, onBack }) => {
     });
   }, []);
 
-  // 🔥 Phase 8: Exit select mode
   const exitSelectMode = useCallback(() => {
     setIsSelectMode(false);
     setSelectedMessages(new Set());
   }, []);
 
-  // 🔥 Phase 8: Select all messages
   const handleSelectAll = useCallback(() => {
     const visibleIds = messages
       .filter((m) => !m.deletedForEveryone)
@@ -92,7 +146,6 @@ const ChatWindow = ({ chat, onBack }) => {
     setSelectedMessages(new Set(visibleIds));
   }, [messages]);
 
-  // 🔥 Phase 8: Bulk delete for me
   const handleBulkDeleteForMe = async () => {
     if (selectedMessages.size === 0) return;
     const ids = Array.from(selectedMessages);
@@ -111,8 +164,6 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
-  // 🔥 Phase 8: Bulk delete for everyone
-  // Only own messages can be deleted for everyone
   const selectedOwnMessages = Array.from(selectedMessages).filter((id) => {
     const msg = messages.find((m) => m._id === id);
     if (!msg) return false;
@@ -210,7 +261,6 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
-  // Reset select mode when chat changes
   useEffect(() => {
     exitSelectMode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -441,7 +491,6 @@ const ChatWindow = ({ chat, onBack }) => {
         maxHeight: "var(--app-height, 100dvh)",
       }}
     >
-      {/* 🔥 Phase 8: Select mode top bar OR normal header */}
       <div className="flex-shrink-0 z-30">
         <AnimatePresence mode="wait">
           {isSelectMode ? (
@@ -457,7 +506,6 @@ const ChatWindow = ({ chat, onBack }) => {
                 borderColor: "var(--color-border)",
               }}
             >
-              {/* Left: Cancel + count */}
               <div className="flex items-center gap-3">
                 <button
                   onClick={exitSelectMode}
@@ -474,7 +522,6 @@ const ChatWindow = ({ chat, onBack }) => {
                 </span>
               </div>
 
-              {/* Right: Select all */}
               <button
                 onClick={handleSelectAll}
                 className="text-xs px-3 py-1.5 rounded-lg transition-colors hover:bg-black/20"
@@ -491,11 +538,12 @@ const ChatWindow = ({ chat, onBack }) => {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15 }}
             >
+              {/* 🔥 Use cleanup-wrapped back handler */}
               <ChatHeader
                 chat={chat}
                 isOnline={isOnline}
                 isTyping={isTyping}
-                onBack={onBack}
+                onBack={handleBackWithCleanup}
                 onChatCleared={() => setMessages([])}
               />
             </motion.div>
@@ -503,7 +551,6 @@ const ChatWindow = ({ chat, onBack }) => {
         </AnimatePresence>
       </div>
 
-      {/* MESSAGES */}
       <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-3 sm:p-4 space-y-2 relative min-h-0"
@@ -598,7 +645,6 @@ const ChatWindow = ({ chat, onBack }) => {
                           onDeleteForEveryone={handleDeleteForEveryone}
                           onReply={handleReply}
                           onEdit={handleEdit}
-                          // 🔥 Phase 8: Multi-select props
                           isSelectMode={isSelectMode}
                           isSelected={selectedMessages.has(message._id)}
                           onSelect={handleSelectMessage}
@@ -622,7 +668,6 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
-      {/* 🔥 Phase 8: Bottom action bar in select mode OR normal input */}
       <div className="flex-shrink-0 z-30">
         <AnimatePresence mode="wait">
           {isSelectMode ? (
@@ -647,7 +692,6 @@ const ChatWindow = ({ chat, onBack }) => {
                 </p>
               ) : (
                 <div className="flex items-center gap-3">
-                  {/* Delete for me */}
                   <button
                     onClick={handleBulkDeleteForMe}
                     disabled={bulkDeleting}
@@ -666,7 +710,6 @@ const ChatWindow = ({ chat, onBack }) => {
                     Delete for me
                   </button>
 
-                  {/* Delete for everyone - only if all selected are own */}
                   {selectedOwnMessages.length > 0 && (
                     <button
                       onClick={handleBulkDeleteForEveryone}
@@ -695,7 +738,6 @@ const ChatWindow = ({ chat, onBack }) => {
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.2 }}
             >
-              {/* Phase 7: Block banners */}
               {iBlockedThem && (
                 <div
                   className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border-t"
