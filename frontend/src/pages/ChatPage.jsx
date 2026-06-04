@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   HiOutlineLogout,
@@ -8,7 +8,7 @@ import {
   HiOutlineBell,
   HiOutlineChatAlt2,
   HiOutlineUsers,
-  HiOutlineShare, // 🔥 NEW
+  HiOutlineShare,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import ThemeSwitcher from "../components/common/ThemeSwitcher";
@@ -25,7 +25,7 @@ import ChatList from "../components/chat/ChatList";
 import ChatWindow from "../components/chat/ChatWindow";
 import { chatAPI } from "../services/api";
 import ProfileSettings from "../components/profile/ProfileSettings";
-import InviteFriend from "../components/friends/InviteFriend"; // 🔥 NEW
+import InviteFriend from "../components/friends/InviteFriend";
 
 const ChatPage = () => {
   const { user, logout } = useAuth();
@@ -45,17 +45,23 @@ const ChatPage = () => {
     selectChat,
     closeChat,
     lockAllAgain,
+    markChatsUnlocked,
+    unlockedChats,
   } = useChat();
 
   const [showSettings, setShowSettings] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
-  const [showInvite, setShowInvite] = useState(false); // 🔥 NEW
+  const [showInvite, setShowInvite] = useState(false);
   const [activeTab, setActiveTab] = useState("chats");
   const [searchQuery, setSearchQuery] = useState("");
   const [creatingChat, setCreatingChat] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  // 🔥 Hidden locked chats state
+  const [revealLocked, setRevealLocked] = useState(false);
+  const pinAttemptRef = useRef(null); // debounce pin tries
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -68,6 +74,7 @@ const ChatPage = () => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         lockAllAgain();
+        setRevealLocked(false);
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -78,6 +85,59 @@ const ChatPage = () => {
   useBackButton(!!activeChat && isMobile, () => {
     closeChat();
   });
+
+  // 🔥 PIN-in-search detection
+  useEffect(() => {
+    // Clear any pending pin attempts
+    if (pinAttemptRef.current) {
+      clearTimeout(pinAttemptRef.current);
+    }
+
+    const trimmed = searchQuery.trim();
+
+    // If user cleared search → hide locked again
+    if (!trimmed) {
+      if (revealLocked) {
+        setRevealLocked(false);
+        lockAllAgain();
+      }
+      return;
+    }
+
+    // Check if input is a 4-digit PIN
+    const isPin = /^\d{4}$/.test(trimmed);
+    if (!isPin) {
+      // Not a PIN — hide locked if previously revealed
+      if (revealLocked) {
+        setRevealLocked(false);
+        lockAllAgain();
+      }
+      return;
+    }
+
+    // Has locked chats?
+    const lockedChats = chats.filter((c) => c.isLocked);
+    if (lockedChats.length === 0) return;
+
+    // Debounce — try unlock 400ms after typing stops
+    pinAttemptRef.current = setTimeout(async () => {
+      try {
+        // Try to unlock with the first locked chat as verifier
+        await chatAPI.unlock(lockedChats[0]._id, trimmed);
+        markChatsUnlocked();
+        setRevealLocked(true);
+        toast.success("Locked chats revealed 🔓", { duration: 1500 });
+        setSearchQuery(""); // Clear search to show all
+      } catch (err) {
+        // Silent fail — wrong PIN, do nothing
+      }
+    }, 400);
+
+    return () => {
+      if (pinAttemptRef.current) clearTimeout(pinAttemptRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, chats]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -100,13 +160,22 @@ const ChatPage = () => {
     }
   };
 
-  const filteredChats = chats.filter(
-    (c) =>
-      c.otherUser?.fullName
-        ?.toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      c.otherUser?.username?.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  // 🔥 Filter chats — exclude locked unless revealed
+  const filteredChats = chats
+    .filter((c) => {
+      // Hide locked chats unless revealed
+      if (c.isLocked && !revealLocked) return false;
+      return true;
+    })
+    .filter(
+      (c) =>
+        c.otherUser?.fullName
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        c.otherUser?.username
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()),
+    );
 
   const filteredFriends = friends.filter(
     (friend) =>
@@ -115,7 +184,10 @@ const ChatPage = () => {
   );
 
   return (
-    <div className="h-screen bg-dark flex overflow-hidden">
+    <div
+      className="h-screen flex overflow-hidden"
+      style={{ backgroundColor: "var(--color-bg)" }}
+    >
       {/* Sidebar */}
       <motion.div
         initial={{ x: -300, opacity: 0 }}
@@ -123,18 +195,25 @@ const ChatPage = () => {
         transition={{ duration: 0.4, ease: "easeOut" }}
         className={`${
           activeChat ? "hidden lg:flex" : "flex"
-        } w-full lg:w-96 border-r border-dark-200/50 flex-col bg-dark`}
+        } w-full lg:w-96 flex-col`}
+        style={{
+          backgroundColor: "var(--color-bg)",
+          borderRight: "1px solid var(--color-border)",
+        }}
       >
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-dark-200/50 flex items-center justify-between">
+        <div
+          className="p-4 flex items-center justify-between"
+          style={{ borderBottom: "1px solid var(--color-border)" }}
+        >
           <TalishLogo size="sm" />
           <div className="flex items-center gap-1">
             <ThemeSwitcher />
 
-            {/* Friend Requests */}
             <button
               onClick={() => setShowRequests(true)}
-              className="relative p-2 rounded-lg hover:bg-dark-100 text-gray-soft hover:text-offwhite transition-colors"
+              className="relative p-2 rounded-lg transition-colors hover:bg-black/10"
+              style={{ color: "var(--color-textMuted)" }}
               title="Friend Requests"
             >
               <HiOutlineBell className="text-lg" />
@@ -142,26 +221,27 @@ const ChatPage = () => {
                 <motion.span
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className="absolute -top-0.5 -right-0.5 bg-accent text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 glow-pulse"
+                  className="absolute -top-0.5 -right-0.5 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 glow-pulse"
+                  style={{ backgroundColor: "var(--color-primary)" }}
                 >
                   {pendingRequestsCount > 9 ? "9+" : pendingRequestsCount}
                 </motion.span>
               )}
             </button>
 
-            {/* Add Friend */}
             <button
               onClick={() => setShowAddFriend(true)}
-              className="p-2 rounded-lg hover:bg-dark-100 text-gray-soft hover:text-offwhite transition-colors"
+              className="p-2 rounded-lg transition-colors hover:bg-black/10"
+              style={{ color: "var(--color-textMuted)" }}
               title="Add Friend"
             >
               <HiOutlineUserAdd className="text-lg" />
             </button>
 
-            {/* 🔥 NEW: Invite Friend */}
             <button
               onClick={() => setShowInvite(true)}
-              className="p-2 rounded-lg hover:bg-dark-100 text-gray-soft hover:text-offwhite transition-colors"
+              className="p-2 rounded-lg transition-colors hover:bg-black/10"
+              style={{ color: "var(--color-textMuted)" }}
               title="Invite Friend"
             >
               <HiOutlineShare className="text-lg" />
@@ -170,35 +250,62 @@ const ChatPage = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-dark-50 px-3 pt-2 gap-1">
+        <div
+          className="flex px-3 pt-2 gap-1"
+          style={{ backgroundColor: "var(--color-bgCard)" }}
+        >
           <button
             onClick={() => setActiveTab("chats")}
-            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-              activeTab === "chats"
-                ? "bg-dark-100 text-offwhite border-b-2 border-accent"
-                : "text-gray-soft hover:text-offwhite"
-            }`}
+            className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
+            style={{
+              backgroundColor:
+                activeTab === "chats" ? "var(--color-bgInput)" : "transparent",
+              color:
+                activeTab === "chats"
+                  ? "var(--color-text)"
+                  : "var(--color-textMuted)",
+              borderBottom:
+                activeTab === "chats"
+                  ? "2px solid var(--color-primary)"
+                  : "2px solid transparent",
+            }}
           >
             <HiOutlineChatAlt2 className="text-base" />
             Chats
             {chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0) > 0 && (
-              <span className="bg-accent text-white text-[10px] rounded-full px-1.5 py-0.5 min-w-[18px]">
+              <span
+                className="text-white text-[10px] rounded-full px-1.5 py-0.5 min-w-[18px]"
+                style={{ backgroundColor: "var(--color-primary)" }}
+              >
                 {chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab("friends")}
-            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-              activeTab === "friends"
-                ? "bg-dark-100 text-offwhite border-b-2 border-accent"
-                : "text-gray-soft hover:text-offwhite"
-            }`}
+            className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
+            style={{
+              backgroundColor:
+                activeTab === "friends"
+                  ? "var(--color-bgInput)"
+                  : "transparent",
+              color:
+                activeTab === "friends"
+                  ? "var(--color-text)"
+                  : "var(--color-textMuted)",
+              borderBottom:
+                activeTab === "friends"
+                  ? "2px solid var(--color-primary)"
+                  : "2px solid transparent",
+            }}
           >
             <HiOutlineUsers className="text-base" />
             Friends
             {friends.length > 0 && (
-              <span className="text-[10px] text-gray-soft">
+              <span
+                className="text-[10px]"
+                style={{ color: "var(--color-textMuted)" }}
+              >
                 ({friends.length})
               </span>
             )}
@@ -206,20 +313,38 @@ const ChatPage = () => {
         </div>
 
         {/* Search Bar */}
-        <div className="p-3 border-b border-dark-200/50">
+        <div
+          className="p-3"
+          style={{ borderBottom: "1px solid var(--color-border)" }}
+        >
           <div className="relative">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-soft text-base" />
+            <HiOutlineSearch
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-base"
+              style={{ color: "var(--color-textMuted)" }}
+            />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={`Search ${activeTab}...`}
-              className="w-full bg-dark-100 border border-dark-200/50 text-offwhite rounded-xl
-                pl-9 pr-3 py-2 text-sm
-                placeholder:text-gray-soft/60
-                focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30
-                transition-all"
+              className="w-full rounded-xl pl-9 pr-3 py-2 text-sm transition-all focus:outline-none"
+              style={{
+                backgroundColor: "var(--color-bgInput)",
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text)",
+              }}
             />
+            {/* 🔥 Subtle indicator when locked chats are revealed */}
+            {revealLocked && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs"
+                title="Locked chats revealed"
+              >
+                🔓
+              </motion.div>
+            )}
           </div>
         </div>
 
@@ -247,33 +372,48 @@ const ChatPage = () => {
         </div>
 
         {/* User Profile Area */}
-        <div className="p-3 border-t border-dark-200/50">
-          <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-dark-100/50 transition-colors group">
+        <div
+          className="p-3"
+          style={{ borderTop: "1px solid var(--color-border)" }}
+        >
+          <div className="flex items-center gap-3 p-2 rounded-xl transition-colors group hover:bg-black/5">
             <div className="relative">
               <img
                 src={user?.avatar}
                 alt={user?.fullName}
-                className="w-11 h-11 rounded-full object-cover border-2 border-accent/30"
+                className="w-11 h-11 rounded-full object-cover"
+                style={{ border: "2px solid var(--color-primary)" }}
               />
               <div
-                className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-dark ${
-                  isConnected ? "bg-green-500" : "bg-gray-soft"
-                }`}
+                className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full"
+                style={{
+                  backgroundColor: isConnected
+                    ? "#22c55e"
+                    : "var(--color-textMuted)",
+                  border: "2px solid var(--color-bg)",
+                }}
               />
             </div>
 
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-offwhite truncate">
+              <p
+                className="text-sm font-semibold truncate"
+                style={{ color: "var(--color-text)" }}
+              >
                 {user?.fullName}
               </p>
-              <p className="text-xs text-gray-soft truncate">
+              <p
+                className="text-xs truncate"
+                style={{ color: "var(--color-textMuted)" }}
+              >
                 @{user?.username}
               </p>
             </div>
 
             <div className="flex items-center gap-1">
               <button
-                className="p-2 rounded-lg hover:bg-dark-200 text-gray-soft hover:text-accent transition-colors"
+                className="p-2 rounded-lg transition-colors hover:bg-black/10"
+                style={{ color: "var(--color-textMuted)" }}
                 onClick={() => setShowSettings(true)}
                 title="Settings"
               >
@@ -282,7 +422,8 @@ const ChatPage = () => {
               <button
                 onClick={handleLogout}
                 disabled={loggingOut}
-                className="p-2 rounded-lg hover:bg-red-500/10 text-gray-soft hover:text-red-400 transition-colors"
+                className="p-2 rounded-lg hover:bg-red-500/10 transition-colors"
+                style={{ color: "var(--color-textMuted)" }}
                 title="Logout"
               >
                 {loggingOut ? (
@@ -300,7 +441,8 @@ const ChatPage = () => {
       <div
         className={`${
           activeChat ? "flex" : "hidden lg:flex"
-        } flex-1 flex-col bg-dark relative overflow-hidden`}
+        } flex-1 flex-col relative overflow-hidden`}
+        style={{ backgroundColor: "var(--color-bg)" }}
       >
         {activeChat ? (
           <ChatWindow chat={activeChat} onBack={closeChat} />
@@ -311,7 +453,10 @@ const ChatPage = () => {
             transition={{ duration: 0.5 }}
             className="flex-1 flex flex-col items-center justify-center relative overflow-hidden"
           >
-            <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
+            <div
+              className="absolute top-1/4 right-1/4 w-96 h-96 rounded-full blur-3xl"
+              style={{ backgroundColor: "var(--color-glow)", opacity: 0.3 }}
+            />
 
             <div className="text-center space-y-6 z-10 px-4">
               <div className="animate-float">
@@ -319,26 +464,59 @@ const ChatPage = () => {
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-2xl sm:text-3xl font-display font-bold text-offwhite">
+                <h2
+                  className="text-2xl sm:text-3xl font-display font-bold"
+                  style={{ color: "var(--color-text)" }}
+                >
                   Welcome to <TalishLogoText />
                 </h2>
-                <p className="text-gray-soft max-w-sm mx-auto">
+                <p
+                  className="max-w-sm mx-auto"
+                  style={{ color: "var(--color-textMuted)" }}
+                >
                   Select a chat from the sidebar or click on a friend to start a
                   new conversation 💬
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-3 mt-8 max-w-md mx-auto">
-                <div className="flex items-center gap-2 text-xs text-gray-soft px-3 py-1.5 bg-dark-50 rounded-full border border-dark-200/50">
+                <div
+                  className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
+                  style={{
+                    color: "var(--color-textMuted)",
+                    backgroundColor: "var(--color-bgCard)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                   {isConnected ? "Connected" : "Connecting..."}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-soft px-3 py-1.5 bg-dark-50 rounded-full border border-dark-200/50">
-                  <span className="w-2 h-2 bg-accent rounded-full" />
+                <div
+                  className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
+                  style={{
+                    color: "var(--color-textMuted)",
+                    backgroundColor: "var(--color-bgCard)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: "var(--color-primary)" }}
+                  />
                   {chats.length} Chats
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-soft px-3 py-1.5 bg-dark-50 rounded-full border border-dark-200/50">
-                  <span className="w-2 h-2 bg-accent-blue rounded-full" />
+                <div
+                  className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
+                  style={{
+                    color: "var(--color-textMuted)",
+                    backgroundColor: "var(--color-bgCard)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: "var(--color-secondary)" }}
+                  />
                   {friends.length} Friends
                 </div>
               </div>
@@ -346,12 +524,24 @@ const ChatPage = () => {
           </motion.div>
         )}
 
-        {/* Creating chat loader overlay */}
         {creatingChat && (
-          <div className="absolute inset-0 bg-dark/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div
+            className="absolute inset-0 backdrop-blur-sm flex items-center justify-center z-50"
+            style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          >
             <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-gray-soft">Opening chat...</p>
+              <div
+                className="w-10 h-10 border-[3px] border-t-transparent rounded-full animate-spin"
+                style={{
+                  borderColor: "var(--color-primary) transparent transparent",
+                }}
+              />
+              <p
+                className="text-sm"
+                style={{ color: "var(--color-textMuted)" }}
+              >
+                Opening chat...
+              </p>
             </div>
           </div>
         )}
@@ -375,8 +565,6 @@ const ChatPage = () => {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
       />
-
-      {/* 🔥 NEW: Invite Friend Modal */}
       <InviteFriend isOpen={showInvite} onClose={() => setShowInvite(false)} />
     </div>
   );
