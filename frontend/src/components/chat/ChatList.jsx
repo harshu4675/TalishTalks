@@ -17,6 +17,7 @@ import { useFriends } from "../../hooks/useFriends";
 import { chatAPI, userAPI, friendAPI } from "../../services/api";
 import ChatActionSheet from "./ChatActionSheet";
 import PinModal from "./PinModal";
+import FirstLockGuide from "./FirstLockGuide";
 
 const LONG_PRESS_DURATION = 500;
 
@@ -35,6 +36,9 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
   const [actionSheetChat, setActionSheetChat] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // 🔥 NEW: First lock guide state
+  const [showFirstLockGuide, setShowFirstLockGuide] = useState(false);
 
   const [pinModal, setPinModal] = useState({
     open: false,
@@ -69,7 +73,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     return text.length > len ? text.slice(0, len) + "..." : text;
   };
 
-  // 🔥 Filtering now done in parent (ChatPage)
   const visibleChats = chats;
 
   const handlePressStart = (e, chat) => {
@@ -215,8 +218,18 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
               onSubmit: async (pin) => {
                 await chatAPI.lock(chat._id, pin);
                 updateChatFlags(chat._id, { isLocked: true });
-                toast.success("Chat locked 🔒");
                 setPinModal((p) => ({ ...p, open: false }));
+
+                // 🔥 Show first-time guide if user has never locked before
+                const hasSeenGuide = localStorage.getItem(
+                  "talish_lock_guide_seen",
+                );
+                if (!hasSeenGuide) {
+                  setShowFirstLockGuide(true);
+                  localStorage.setItem("talish_lock_guide_seen", "true");
+                } else {
+                  toast.success("Chat locked 🔒");
+                }
               },
             });
           }
@@ -600,6 +613,12 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
         subtitle={pinModal.subtitle}
         onSubmit={pinModal.onSubmit}
         onClose={() => setPinModal((p) => ({ ...p, open: false }))}
+      />
+
+      {/* 🔥 First-time lock guide */}
+      <FirstLockGuide
+        isOpen={showFirstLockGuide}
+        onClose={() => setShowFirstLockGuide(false)}
       />
     </>
   );

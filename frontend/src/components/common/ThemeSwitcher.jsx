@@ -14,32 +14,21 @@ const ThemeSwitcher = () => {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const buttonRef = useRef(null);
 
-  // 🔥 Calculate dropdown position to fit on screen
   useEffect(() => {
     if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const dropdownWidth = 288; // w-72 = 18rem = 288px
+      const dropdownWidth = 288;
       const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
       const padding = 12;
 
-      // Try to align right edge of dropdown with right edge of button
       let left = rect.right - dropdownWidth;
-
-      // If overflows left edge → align with left padding
-      if (left < padding) {
-        left = padding;
-      }
-
-      // If overflows right edge → align to right with padding
-      if (left + dropdownWidth > windowWidth - padding) {
+      if (left < padding) left = padding;
+      if (left + dropdownWidth > windowWidth - padding)
         left = windowWidth - dropdownWidth - padding;
-      }
 
       let top = rect.bottom + 8;
-
-      // If dropdown would overflow bottom → open upwards
-      const dropdownMaxHeight = 520;
+      const dropdownMaxHeight = Math.min(windowHeight * 0.8, 600);
       if (top + dropdownMaxHeight > windowHeight - padding) {
         top = Math.max(padding, rect.top - dropdownMaxHeight - 8);
       }
@@ -48,7 +37,6 @@ const ThemeSwitcher = () => {
     }
   }, [isOpen]);
 
-  // Close on scroll / resize
   useEffect(() => {
     if (!isOpen) return;
     const handleClose = () => setIsOpen(false);
@@ -131,7 +119,6 @@ const ThemeSwitcher = () => {
 
   return (
     <>
-      {/* Trigger Button */}
       <button
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
@@ -149,125 +136,125 @@ const ThemeSwitcher = () => {
         />
       </button>
 
-      {/* 🔥 PORTAL: Dropdown positioned absolutely in viewport */}
       {isOpen &&
         createPortal(
-          <AnimatePresence>
-            <>
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setIsOpen(false)}
-                className="fixed inset-0 z-[9998] bg-black/20 backdrop-blur-[2px]"
-              />
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsOpen(false)}
+              className="fixed inset-0 z-[9998] bg-black/20"
+            />
 
-              {/* Dropdown */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                transition={{ duration: 0.15 }}
-                className="fixed w-72 rounded-2xl shadow-card-hover overflow-hidden z-[9999]"
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -5 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -5 }}
+              transition={{ duration: 0.15 }}
+              className="fixed w-72 rounded-2xl shadow-card-hover z-[9999] flex flex-col"
+              style={{
+                top: `${position.top}px`,
+                left: `${position.left}px`,
+                backgroundColor: "var(--color-bgCard)",
+                border: "1px solid var(--color-border)",
+                maxWidth: "calc(100vw - 24px)",
+                maxHeight: "min(80vh, 600px)",
+              }}
+            >
+              {/* Header */}
+              <div
+                className="p-4 border-b flex-shrink-0"
+                style={{ borderColor: "var(--color-border)" }}
+              >
+                <h3
+                  className="text-sm font-semibold flex items-center gap-2"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  <HiOutlineColorSwatch className="text-base" />
+                  Choose Theme
+                </h3>
+                <p
+                  className="text-xs mt-0.5"
+                  style={{ color: "var(--color-textMuted)" }}
+                >
+                  {isLightMode ? "☀️ Light mode active" : "🌙 Dark mode active"}
+                </p>
+              </div>
+
+              {/* Scrollable list */}
+              <div
+                className="overflow-y-auto scrollbar-thin p-3 space-y-4 flex-1 min-h-0"
                 style={{
-                  top: `${position.top}px`,
-                  left: `${position.left}px`,
-                  backgroundColor: "var(--color-bgCard)",
-                  border: "1px solid var(--color-border)",
-                  maxWidth: "calc(100vw - 24px)",
+                  WebkitOverflowScrolling: "touch",
+                  overscrollBehavior: "contain",
+                  touchAction: "pan-y",
                 }}
               >
-                {/* Header */}
+                {/* Dark themes */}
+                <div>
+                  <p
+                    className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    🌙 Dark Themes
+                  </p>
+                  <div className="space-y-1">
+                    {Object.entries(DARK_THEMES).map(([key, themeData]) => (
+                      <ThemeButton
+                        key={key}
+                        themeKey={key}
+                        themeData={themeData}
+                      />
+                    ))}
+                  </div>
+                </div>
+
                 <div
-                  className="p-4 border-b"
+                  className="border-t"
                   style={{ borderColor: "var(--color-border)" }}
-                >
-                  <h3
-                    className="text-sm font-semibold flex items-center gap-2"
-                    style={{ color: "var(--color-text)" }}
-                  >
-                    <HiOutlineColorSwatch className="text-base" />
-                    Choose Theme
-                  </h3>
+                />
+
+                {/* Light themes */}
+                <div>
                   <p
-                    className="text-xs mt-0.5"
+                    className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1"
                     style={{ color: "var(--color-textMuted)" }}
                   >
-                    {isLightMode
-                      ? "☀️ Light mode active"
-                      : "🌙 Dark mode active"}
+                    ☀️ Light Themes
                   </p>
-                </div>
-
-                {/* Scrollable list */}
-                <div className="max-h-[420px] overflow-y-auto scrollbar-thin p-3 space-y-4">
-                  {/* Dark themes */}
-                  <div>
-                    <p
-                      className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1"
-                      style={{ color: "var(--color-textMuted)" }}
-                    >
-                      🌙 Dark Themes
-                    </p>
-                    <div className="space-y-1">
-                      {Object.entries(DARK_THEMES).map(([key, themeData]) => (
-                        <ThemeButton
-                          key={key}
-                          themeKey={key}
-                          themeData={themeData}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div
-                    className="border-t"
-                    style={{ borderColor: "var(--color-border)" }}
-                  />
-
-                  {/* Light themes */}
-                  <div>
-                    <p
-                      className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1"
-                      style={{ color: "var(--color-textMuted)" }}
-                    >
-                      ☀️ Light Themes
-                    </p>
-                    <div className="space-y-1">
-                      {Object.entries(LIGHT_THEMES).map(([key, themeData]) => (
-                        <ThemeButton
-                          key={key}
-                          themeKey={key}
-                          themeData={themeData}
-                        />
-                      ))}
-                    </div>
+                  <div className="space-y-1">
+                    {Object.entries(LIGHT_THEMES).map(([key, themeData]) => (
+                      <ThemeButton
+                        key={key}
+                        themeKey={key}
+                        themeData={themeData}
+                      />
+                    ))}
                   </div>
                 </div>
+              </div>
 
-                {/* Footer */}
-                <div
-                  className="px-4 py-3 border-t text-center"
-                  style={{
-                    borderColor: "var(--color-border)",
-                    backgroundColor: "var(--color-bg)",
-                  }}
+              {/* Footer */}
+              <div
+                className="px-4 py-3 border-t text-center flex-shrink-0"
+                style={{
+                  borderColor: "var(--color-border)",
+                  backgroundColor: "var(--color-bg)",
+                }}
+              >
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--color-textMuted)" }}
                 >
-                  <p
-                    className="text-xs"
-                    style={{ color: "var(--color-textMuted)" }}
-                  >
-                    💡{" "}
-                    {Object.keys(DARK_THEMES).length +
-                      Object.keys(LIGHT_THEMES).length}{" "}
-                    themes available
-                  </p>
-                </div>
-              </motion.div>
-            </>
-          </AnimatePresence>,
+                  💡{" "}
+                  {Object.keys(DARK_THEMES).length +
+                    Object.keys(LIGHT_THEMES).length}{" "}
+                  themes available
+                </p>
+              </div>
+            </motion.div>
+          </>,
           document.body,
         )}
     </>

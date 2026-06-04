@@ -8,6 +8,7 @@ import {
   HiOutlineEye,
   HiOutlineX,
   HiOutlineBan,
+  HiOutlineLockOpen,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import { chatAPI, userAPI } from "../../services/api";
@@ -47,7 +48,7 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
     }
   };
 
-  // 🔥 NEW: Block / Unblock
+  // Block / Unblock
   const handleToggleBlock = async () => {
     setShowMenu(false);
     if (!otherUser?._id) return;
@@ -71,6 +72,25 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Action failed");
+    }
+  };
+
+  // 🔥 NEW: Remove Lock
+  const handleRemoveLock = async () => {
+    setShowMenu(false);
+    const pin = window.prompt("Enter your 4-digit PIN to remove the lock:");
+    if (!pin) return;
+    if (!/^\d{4}$/.test(pin)) {
+      toast.error("PIN must be 4 digits");
+      return;
+    }
+
+    try {
+      await chatAPI.removeLock(chat._id, pin);
+      updateChatFlags(chat._id, { isLocked: false });
+      toast.success("Lock removed 🔓");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Wrong PIN");
     }
   };
 
@@ -168,6 +188,22 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1 flex-shrink-0">
+        {/* 🔥 Lock indicator badge */}
+        {chat.isLocked && (
+          <div
+            className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(124, 58, 237, 0.1)",
+              border: "1px solid var(--color-primary)",
+              color: "var(--color-primary)",
+            }}
+            title="This chat is locked"
+          >
+            <HiOutlineLockOpen className="text-sm" />
+            <span className="hidden sm:inline text-[11px]">Locked</span>
+          </div>
+        )}
+
         {disappearingEnabled && !isBlocked && (
           <div
             className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs"
@@ -305,7 +341,22 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                     </button>
                   )}
 
-                  {/* 🔥 NEW: Block / Unblock button */}
+                  {/* 🔥 NEW: Remove Lock button (only if chat is locked) */}
+                  {chat.isLocked && (
+                    <button
+                      onClick={handleRemoveLock}
+                      className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors border-t hover:bg-black/20"
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-primary)",
+                      }}
+                    >
+                      <HiOutlineLockOpen className="text-base" />
+                      Remove Lock
+                    </button>
+                  )}
+
+                  {/* Block / Unblock button */}
                   {!chat.theyBlockedMe && (
                     <button
                       onClick={handleToggleBlock}

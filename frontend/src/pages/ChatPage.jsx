@@ -9,6 +9,7 @@ import {
   HiOutlineChatAlt2,
   HiOutlineUsers,
   HiOutlineShare,
+  HiOutlineX,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import ThemeSwitcher from "../components/common/ThemeSwitcher";
@@ -61,7 +62,7 @@ const ChatPage = () => {
 
   // 🔥 Hidden locked chats state
   const [revealLocked, setRevealLocked] = useState(false);
-  const pinAttemptRef = useRef(null); // debounce pin tries
+  const pinAttemptRef = useRef(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -88,14 +89,12 @@ const ChatPage = () => {
 
   // 🔥 PIN-in-search detection
   useEffect(() => {
-    // Clear any pending pin attempts
     if (pinAttemptRef.current) {
       clearTimeout(pinAttemptRef.current);
     }
 
     const trimmed = searchQuery.trim();
 
-    // If user cleared search → hide locked again
     if (!trimmed) {
       if (revealLocked) {
         setRevealLocked(false);
@@ -104,10 +103,8 @@ const ChatPage = () => {
       return;
     }
 
-    // Check if input is a 4-digit PIN
     const isPin = /^\d{4}$/.test(trimmed);
     if (!isPin) {
-      // Not a PIN — hide locked if previously revealed
       if (revealLocked) {
         setRevealLocked(false);
         lockAllAgain();
@@ -115,21 +112,18 @@ const ChatPage = () => {
       return;
     }
 
-    // Has locked chats?
     const lockedChats = chats.filter((c) => c.isLocked);
     if (lockedChats.length === 0) return;
 
-    // Debounce — try unlock 400ms after typing stops
     pinAttemptRef.current = setTimeout(async () => {
       try {
-        // Try to unlock with the first locked chat as verifier
         await chatAPI.unlock(lockedChats[0]._id, trimmed);
         markChatsUnlocked();
         setRevealLocked(true);
         toast.success("Locked chats revealed 🔓", { duration: 1500 });
-        setSearchQuery(""); // Clear search to show all
+        setSearchQuery("");
       } catch (err) {
-        // Silent fail — wrong PIN, do nothing
+        // Silent fail — wrong PIN
       }
     }, 400);
 
@@ -138,6 +132,15 @@ const ChatPage = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, chats]);
+
+  // 🔥 Hide locked chats when switching tabs
+  useEffect(() => {
+    if (revealLocked && activeTab !== "chats") {
+      setRevealLocked(false);
+      lockAllAgain();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -160,10 +163,9 @@ const ChatPage = () => {
     }
   };
 
-  // 🔥 Filter chats — exclude locked unless revealed
+  // 🔥 Hide locked chats unless PIN revealed
   const filteredChats = chats
     .filter((c) => {
-      // Hide locked chats unless revealed
       if (c.isLocked && !revealLocked) return false;
       return true;
     })
@@ -182,6 +184,9 @@ const ChatPage = () => {
       friend.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       friend.username.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  // 🔥 Count locked chats for hint
+  const lockedCount = chats.filter((c) => c.isLocked).length;
 
   return (
     <div
@@ -203,7 +208,7 @@ const ChatPage = () => {
       >
         {/* Sidebar Header */}
         <div
-          className="p-4 flex items-center justify-between"
+          className="p-4 flex items-center justify-between flex-shrink-0"
           style={{ borderBottom: "1px solid var(--color-border)" }}
         >
           <TalishLogo size="sm" />
@@ -251,7 +256,7 @@ const ChatPage = () => {
 
         {/* Tabs */}
         <div
-          className="flex px-3 pt-2 gap-1"
+          className="flex px-3 pt-2 gap-1 flex-shrink-0"
           style={{ backgroundColor: "var(--color-bgCard)" }}
         >
           <button
@@ -272,12 +277,16 @@ const ChatPage = () => {
           >
             <HiOutlineChatAlt2 className="text-base" />
             Chats
-            {chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0) > 0 && (
+            {chats
+              .filter((c) => !c.isLocked)
+              .reduce((sum, c) => sum + (c.unreadCount || 0), 0) > 0 && (
               <span
                 className="text-white text-[10px] rounded-full px-1.5 py-0.5 min-w-[18px]"
                 style={{ backgroundColor: "var(--color-primary)" }}
               >
-                {chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
+                {chats
+                  .filter((c) => !c.isLocked)
+                  .reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
               </span>
             )}
           </button>
@@ -314,7 +323,7 @@ const ChatPage = () => {
 
         {/* Search Bar */}
         <div
-          className="p-3"
+          className="p-3 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--color-border)" }}
         >
           <div className="relative">
@@ -326,26 +335,61 @@ const ChatPage = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Search ${activeTab}...`}
-              className="w-full rounded-xl pl-9 pr-3 py-2 text-sm transition-all focus:outline-none"
+              placeholder={
+                revealLocked
+                  ? "🔓 Locked chats visible..."
+                  : lockedCount > 0 && activeTab === "chats"
+                    ? "Search or enter PIN..."
+                    : `Search ${activeTab}...`
+              }
+              className="w-full rounded-xl pl-9 pr-9 py-2 text-sm transition-all focus:outline-none"
               style={{
                 backgroundColor: "var(--color-bgInput)",
-                border: "1px solid var(--color-border)",
+                border: revealLocked
+                  ? "1px solid var(--color-primary)"
+                  : "1px solid var(--color-border)",
                 color: "var(--color-text)",
               }}
             />
-            {/* 🔥 Subtle indicator when locked chats are revealed */}
+            {/* 🔓 indicator + close when locked chats revealed */}
             {revealLocked && (
-              <motion.div
+              <motion.button
                 initial={{ opacity: 0, scale: 0 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs"
-                title="Locked chats revealed"
+                onClick={() => {
+                  setSearchQuery("");
+                  setRevealLocked(false);
+                  lockAllAgain();
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors hover:bg-black/10"
+                title="Hide locked chats"
               >
-                🔓
-              </motion.div>
+                <HiOutlineX
+                  className="text-sm"
+                  style={{ color: "var(--color-primary)" }}
+                />
+              </motion.button>
             )}
           </div>
+
+          {/* 🔒 Hint for locked chats */}
+          {activeTab === "chats" &&
+            lockedCount > 0 &&
+            !revealLocked &&
+            !searchQuery && (
+              <motion.p
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-[10px] mt-1.5 px-1 flex items-center gap-1"
+                style={{ color: "var(--color-textMuted)" }}
+              >
+                <span>🔒</span>
+                <span>
+                  {lockedCount} locked chat
+                  {lockedCount > 1 ? "s" : ""}. Type your PIN to reveal.
+                </span>
+              </motion.p>
+            )}
         </div>
 
         {/* List */}
@@ -373,7 +417,7 @@ const ChatPage = () => {
 
         {/* User Profile Area */}
         <div
-          className="p-3"
+          className="p-3 flex-shrink-0"
           style={{ borderTop: "1px solid var(--color-border)" }}
         >
           <div className="flex items-center gap-3 p-2 rounded-xl transition-colors group hover:bg-black/5">
@@ -503,7 +547,7 @@ const ChatPage = () => {
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: "var(--color-primary)" }}
                   />
-                  {chats.length} Chats
+                  {chats.filter((c) => !c.isLocked).length} Chats
                 </div>
                 <div
                   className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
@@ -532,9 +576,7 @@ const ChatPage = () => {
             <div className="flex flex-col items-center gap-3">
               <div
                 className="w-10 h-10 border-[3px] border-t-transparent rounded-full animate-spin"
-                style={{
-                  borderColor: "var(--color-primary) transparent transparent",
-                }}
+                style={{ borderColor: "var(--color-primary)" }}
               />
               <p
                 className="text-sm"
