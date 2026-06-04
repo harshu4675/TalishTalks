@@ -37,7 +37,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  // 🔥 NEW: First lock guide state
+  // First lock guide state
   const [showFirstLockGuide, setShowFirstLockGuide] = useState(false);
 
   const [pinModal, setPinModal] = useState({
@@ -75,6 +75,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
 
   const visibleChats = chats;
 
+  // 🔥 Long-press for TOUCH devices only (mobile)
   const handlePressStart = (e, chat) => {
     longPressedRef.current = false;
     pressTimerRef.current = setTimeout(() => {
@@ -92,6 +93,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
   };
 
+  // Right-click for desktop = action menu
   const handleContextMenu = (e, chat) => {
     e.preventDefault();
     setActionSheetChat(chat);
@@ -220,7 +222,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                 updateChatFlags(chat._id, { isLocked: true });
                 setPinModal((p) => ({ ...p, open: false }));
 
-                // 🔥 Show first-time guide if user has never locked before
+                // Show first-time guide
                 const hasSeenGuide = localStorage.getItem(
                   "talish_lock_guide_seen",
                 );
@@ -406,15 +408,11 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                 transition={{ delay: index * 0.02 }}
                 onClick={() => handleProtectedChatClick(chat)}
                 onContextMenu={(e) => handleContextMenu(e, chat)}
+                // 🔥 FIX: Only TOUCH events for long-press, NO mouse events
                 onTouchStart={(e) => handlePressStart(e, chat)}
                 onTouchEnd={handlePressEnd}
                 onTouchMove={handlePressCancel}
                 onTouchCancel={handlePressCancel}
-                onMouseDown={(e) => {
-                  if (e.button === 0) handlePressStart(e, chat);
-                }}
-                onMouseUp={handlePressEnd}
-                onMouseLeave={handlePressCancel}
                 className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200 select-none"
                 style={{
                   WebkitTouchCallout: "none",
@@ -433,7 +431,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                       "var(--color-bgCard)";
                   }
                 }}
-                onMouseOut={(e) => {
+                onMouseLeave={(e) => {
                   if (!isActive && !isSelected) {
                     e.currentTarget.style.backgroundColor = "transparent";
                   }
@@ -615,7 +613,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
         onClose={() => setPinModal((p) => ({ ...p, open: false }))}
       />
 
-      {/* 🔥 First-time lock guide */}
+      {/* First-time lock guide */}
       <FirstLockGuide
         isOpen={showFirstLockGuide}
         onClose={() => setShowFirstLockGuide(false)}

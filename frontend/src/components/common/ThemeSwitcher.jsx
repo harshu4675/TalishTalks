@@ -13,6 +13,7 @@ const ThemeSwitcher = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const buttonRef = useRef(null);
+  const scrollContainerRef = useRef(null);
 
   useEffect(() => {
     if (isOpen && buttonRef.current) {
@@ -37,14 +38,29 @@ const ThemeSwitcher = () => {
     }
   }, [isOpen]);
 
+  // 🔥 FIX: Only close on window scroll, NOT on inner dropdown scroll
   useEffect(() => {
     if (!isOpen) return;
-    const handleClose = () => setIsOpen(false);
-    window.addEventListener("scroll", handleClose, true);
-    window.addEventListener("resize", handleClose);
+
+    const handleResize = () => setIsOpen(false);
+
+    // Only listen to window-level scroll, not bubbled from inside
+    const handleWindowScroll = (e) => {
+      // If scroll happened inside our dropdown, ignore it
+      if (
+        scrollContainerRef.current &&
+        scrollContainerRef.current.contains(e.target)
+      ) {
+        return;
+      }
+      setIsOpen(false);
+    };
+
+    window.addEventListener("scroll", handleWindowScroll, true);
+    window.addEventListener("resize", handleResize);
     return () => {
-      window.removeEventListener("scroll", handleClose, true);
-      window.removeEventListener("resize", handleClose);
+      window.removeEventListener("scroll", handleWindowScroll, true);
+      window.removeEventListener("resize", handleResize);
     };
   }, [isOpen]);
 
@@ -182,14 +198,18 @@ const ThemeSwitcher = () => {
                 </p>
               </div>
 
-              {/* Scrollable list */}
+              {/* 🔥 Scrollable list - FIXED for mobile touch */}
               <div
+                ref={scrollContainerRef}
                 className="overflow-y-auto scrollbar-thin p-3 space-y-4 flex-1 min-h-0"
                 style={{
                   WebkitOverflowScrolling: "touch",
                   overscrollBehavior: "contain",
                   touchAction: "pan-y",
                 }}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
               >
                 {/* Dark themes */}
                 <div>

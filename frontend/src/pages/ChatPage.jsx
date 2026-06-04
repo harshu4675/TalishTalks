@@ -87,7 +87,7 @@ const ChatPage = () => {
     closeChat();
   });
 
-  // 🔥 PIN-in-search detection
+  // 🔥 PIN-in-search detection (FIXED)
   useEffect(() => {
     if (pinAttemptRef.current) {
       clearTimeout(pinAttemptRef.current);
@@ -118,10 +118,14 @@ const ChatPage = () => {
     pinAttemptRef.current = setTimeout(async () => {
       try {
         await chatAPI.unlock(lockedChats[0]._id, trimmed);
-        markChatsUnlocked();
-        setRevealLocked(true);
-        toast.success("Locked chats revealed 🔓", { duration: 1500 });
+        // 🔥 FIX: Clear search FIRST so filter doesn't filter by PIN text
         setSearchQuery("");
+        // Then reveal (next tick)
+        setTimeout(() => {
+          markChatsUnlocked();
+          setRevealLocked(true);
+          toast.success("Locked chats revealed 🔓", { duration: 1500 });
+        }, 50);
       } catch (err) {
         // Silent fail — wrong PIN
       }
@@ -133,7 +137,7 @@ const ChatPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, chats]);
 
-  // 🔥 Hide locked chats when switching tabs
+  // Hide locked chats when switching tabs
   useEffect(() => {
     if (revealLocked && activeTab !== "chats") {
       setRevealLocked(false);
@@ -163,7 +167,7 @@ const ChatPage = () => {
     }
   };
 
-  // 🔥 Hide locked chats unless PIN revealed
+  // 🔥 Filter chats — hide locked unless revealed
   const filteredChats = chats
     .filter((c) => {
       if (c.isLocked && !revealLocked) return false;
@@ -179,13 +183,24 @@ const ChatPage = () => {
           .includes(searchQuery.toLowerCase()),
     );
 
-  const filteredFriends = friends.filter(
-    (friend) =>
-      friend.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      friend.username.toLowerCase().includes(searchQuery.toLowerCase()),
+  // 🔥 NEW: Build set of friend IDs whose chats are locked
+  const lockedFriendIds = new Set(
+    chats
+      .filter((c) => c.isLocked && !revealLocked)
+      .map((c) => c.otherUser?._id)
+      .filter(Boolean),
   );
 
-  // 🔥 Count locked chats for hint
+  // 🔥 Filter friends - hide friends whose chat is locked
+  const filteredFriends = friends
+    .filter((friend) => !lockedFriendIds.has(friend._id))
+    .filter(
+      (friend) =>
+        friend.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        friend.username.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
+
+  // Count locked chats for hint
   const lockedCount = chats.filter((c) => c.isLocked).length;
 
   return (
@@ -310,12 +325,12 @@ const ChatPage = () => {
           >
             <HiOutlineUsers className="text-base" />
             Friends
-            {friends.length > 0 && (
+            {filteredFriends.length > 0 && (
               <span
                 className="text-[10px]"
                 style={{ color: "var(--color-textMuted)" }}
               >
-                ({friends.length})
+                ({filteredFriends.length})
               </span>
             )}
           </button>
@@ -351,7 +366,6 @@ const ChatPage = () => {
                 color: "var(--color-text)",
               }}
             />
-            {/* 🔓 indicator + close when locked chats revealed */}
             {revealLocked && (
               <motion.button
                 initial={{ opacity: 0, scale: 0 }}
@@ -561,7 +575,7 @@ const ChatPage = () => {
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: "var(--color-secondary)" }}
                   />
-                  {friends.length} Friends
+                  {filteredFriends.length} Friends
                 </div>
               </div>
             </div>

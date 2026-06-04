@@ -33,9 +33,10 @@ const ChatWindow = ({ chat, onBack }) => {
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
 
-  // 🔥 Track which chat we're in for cleanup
+  // 🔥 NEW: Track which chat we're in for cleanup
   const currentChatIdRef = useRef(chat?._id);
 
+  // Multi-select state
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -44,6 +45,7 @@ const ChatWindow = ({ chat, onBack }) => {
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
 
+  // Block state
   const iBlockedThem = chat.iBlockedThem || false;
   const theyBlockedMe = chat.theyBlockedMe || false;
   const isBlocked = iBlockedThem || theyBlockedMe;
@@ -58,7 +60,7 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   }, []);
 
-  // 🔥 Wrap onBack to trigger cleanup
+  // 🔥 NEW: Wrap onBack to trigger cleanup
   const handleBackWithCleanup = useCallback(() => {
     handleLeaveCleanup(currentChatIdRef.current);
     if (onBack) onBack();
@@ -72,33 +74,26 @@ const ChatWindow = ({ chat, onBack }) => {
     handleBackWithCleanup();
   });
 
-  // 🔥 Cleanup on unmount or chat change
+  // 🔥 NEW: Cleanup on unmount or chat change
   useEffect(() => {
     currentChatIdRef.current = chat?._id;
 
     return () => {
-      // When component unmounts OR chat changes, cleanup old chat
       if (currentChatIdRef.current) {
         handleLeaveCleanup(currentChatIdRef.current);
       }
     };
   }, [chat?._id, handleLeaveCleanup]);
 
-  // 🔥 Cleanup on browser close / tab close
+  // 🔥 NEW: Cleanup on browser/tab close
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (currentChatIdRef.current) {
-        // Use sendBeacon for reliability on page close
         const token = localStorage.getItem("talish_token");
         const url = `${
           import.meta.env.VITE_API_URL || "http://localhost:5000/api"
         }/messages/${currentChatIdRef.current}/leave-cleanup`;
 
-        const blob = new Blob([JSON.stringify({})], {
-          type: "application/json",
-        });
-
-        // sendBeacon doesn't support headers, so we use fetch with keepalive
         fetch(url, {
           method: "POST",
           headers: {
@@ -114,11 +109,13 @@ const ChatWindow = ({ chat, onBack }) => {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
+  // Multi-select: Enter mode
   const handleEnterSelectMode = useCallback((messageId) => {
     setIsSelectMode(true);
     setSelectedMessages(new Set([messageId]));
   }, []);
 
+  // Multi-select: Toggle
   const handleSelectMessage = useCallback((messageId) => {
     setSelectedMessages((prev) => {
       const next = new Set(prev);
@@ -134,11 +131,13 @@ const ChatWindow = ({ chat, onBack }) => {
     });
   }, []);
 
+  // Multi-select: Exit
   const exitSelectMode = useCallback(() => {
     setIsSelectMode(false);
     setSelectedMessages(new Set());
   }, []);
 
+  // Multi-select: All
   const handleSelectAll = useCallback(() => {
     const visibleIds = messages
       .filter((m) => !m.deletedForEveryone)
@@ -146,6 +145,7 @@ const ChatWindow = ({ chat, onBack }) => {
     setSelectedMessages(new Set(visibleIds));
   }, [messages]);
 
+  // Bulk delete for me
   const handleBulkDeleteForMe = async () => {
     if (selectedMessages.size === 0) return;
     const ids = Array.from(selectedMessages);
@@ -164,6 +164,7 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
+  // Filter own messages for bulk delete for everyone
   const selectedOwnMessages = Array.from(selectedMessages).filter((id) => {
     const msg = messages.find((m) => m._id === id);
     if (!msg) return false;
@@ -172,6 +173,7 @@ const ChatWindow = ({ chat, onBack }) => {
     return senderId === user._id;
   });
 
+  // Bulk delete for everyone
   const handleBulkDeleteForEveryone = async () => {
     if (selectedOwnMessages.length === 0) return;
     if (
@@ -198,6 +200,7 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
+  // Mobile keyboard handling
   useEffect(() => {
     const setVH = () => {
       const vh = window.visualViewport
@@ -227,6 +230,7 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   }, []);
 
+  // Track last seen message
   const lastSeenOwnMessageId = (() => {
     const ownSeenMessages = messages.filter((m) => {
       const senderId = typeof m.sender === "object" ? m.sender._id : m.sender;
@@ -239,6 +243,7 @@ const ChatWindow = ({ chat, onBack }) => {
       : null;
   })();
 
+  // Fetch messages when chat changes
   useEffect(() => {
     const fetchMessages = async () => {
       setLoadingMessages(true);
@@ -261,11 +266,13 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
+  // Reset select mode when chat changes
   useEffect(() => {
     exitSelectMode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
+  // Auto-scroll on new messages
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({
@@ -275,6 +282,7 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   }, [messages, isTyping]);
 
+  // Mark unseen messages as seen
   useEffect(() => {
     if (!chat?._id || messages.length === 0) return;
     const hasUnseen = messages.some((m) => {
@@ -287,6 +295,7 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, chat?._id]);
 
+  // Socket: Handle message deleted
   useEffect(() => {
     if (!socket || !chat?._id) return;
     const handleMessageDeleted = (data) => {
@@ -300,6 +309,7 @@ const ChatWindow = ({ chat, onBack }) => {
     return () => socket.off("message_deleted", handleMessageDeleted);
   }, [socket, chat?._id, removeMessage]);
 
+  // Send text message
   const handleSend = async (content, replyToData = null) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const optimisticMessage = {
@@ -344,6 +354,7 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
+  // Send media
   const handleSendMedia = async (file, replyToData = null) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const isVideo = file.type.startsWith("video/");
@@ -415,6 +426,7 @@ const ChatWindow = ({ chat, onBack }) => {
     })();
   };
 
+  // Edit message
   const handleEdit = async (messageId, newContent) => {
     try {
       await messageAPI.edit(messageId, newContent);
@@ -424,9 +436,11 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
+  // Typing indicators
   const handleTypingStart = () => emitTypingStart(chat._id, otherUser._id);
   const handleTypingStop = () => emitTypingStop(chat._id, otherUser._id);
 
+  // Single delete for me
   const handleDeleteForMe = async (messageId) => {
     try {
       await messageAPI.deleteForMe(messageId);
@@ -437,6 +451,7 @@ const ChatWindow = ({ chat, onBack }) => {
     }
   };
 
+  // Single delete for everyone
   const handleDeleteForEveryone = async (messageId) => {
     if (!window.confirm("Delete this message for everyone?")) return;
     try {
@@ -449,6 +464,7 @@ const ChatWindow = ({ chat, onBack }) => {
   const handleReply = (message) => setReplyTo(message);
   const handleCancelReply = () => setReplyTo(null);
 
+  // Group messages by date
   const groupMessagesByDate = (msgs) => {
     const groups = [];
     let currentDate = null;
@@ -465,6 +481,7 @@ const ChatWindow = ({ chat, onBack }) => {
     return groups;
   };
 
+  // Format date label
   const formatDateLabel = (dateStr) => {
     const date = new Date(dateStr);
     const today = new Date().toDateString();
@@ -491,6 +508,7 @@ const ChatWindow = ({ chat, onBack }) => {
         maxHeight: "var(--app-height, 100dvh)",
       }}
     >
+      {/* HEADER */}
       <div className="flex-shrink-0 z-30">
         <AnimatePresence mode="wait">
           {isSelectMode ? (
@@ -551,6 +569,7 @@ const ChatWindow = ({ chat, onBack }) => {
         </AnimatePresence>
       </div>
 
+      {/* MESSAGES */}
       <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-3 sm:p-4 space-y-2 relative min-h-0"
@@ -668,6 +687,7 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
+      {/* BOTTOM BAR */}
       <div className="flex-shrink-0 z-30">
         <AnimatePresence mode="wait">
           {isSelectMode ? (
@@ -738,6 +758,7 @@ const ChatWindow = ({ chat, onBack }) => {
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.2 }}
             >
+              {/* Block banners */}
               {iBlockedThem && (
                 <div
                   className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border-t"
