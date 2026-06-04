@@ -79,14 +79,16 @@ export const authAPI = {
   logout: () => api.post("/auth/logout"),
 };
 
+// User endpoints
 export const userAPI = {
   search: (query) => api.get(`/users/search?q=${query}`),
   getProfile: (username) => api.get(`/users/profile/${username}`),
   updateProfile: (data) => api.put("/users/profile", data),
+  // Block / Unblock
   block: (userId) => api.post(`/users/block/${userId}`),
   unblock: (userId) => api.post(`/users/unblock/${userId}`),
   getBlocked: () => api.get("/users/blocked"),
-  // 🔥 NEW
+  // Avatar upload
   uploadAvatar: (formData, onProgress) =>
     api.post("/users/avatar", formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -98,6 +100,7 @@ export const userAPI = {
       },
     }),
 };
+
 // Friend endpoints
 export const friendAPI = {
   sendRequest: (data) => api.post("/friends/request", data),
@@ -116,19 +119,20 @@ export const chatAPI = {
   setDisappearing: (chatId, data) =>
     api.put(`/chats/${chatId}/disappearing`, data),
 
-  // 🔥 NEW: Chat actions
+  // Chat actions
   togglePin: (chatId) => api.put(`/chats/${chatId}/pin`),
   toggleMute: (chatId) => api.put(`/chats/${chatId}/mute`),
   toggleMarkUnread: (chatId) => api.put(`/chats/${chatId}/mark-unread`),
   deleteChat: (chatId) => api.delete(`/chats/${chatId}`),
 
-  // 🔥 Chat lock
+  // Chat lock
   lock: (chatId, pin) => api.put(`/chats/${chatId}/lock`, { pin }),
   unlock: (chatId, pin) => api.put(`/chats/${chatId}/unlock`, { pin }),
   removeLock: (chatId, pin) => api.put(`/chats/${chatId}/remove-lock`, { pin }),
   getLockedChats: () => api.get("/chats/locked"),
 };
 
+// Message endpoints
 export const messageAPI = {
   get: (chatId, params) => api.get(`/messages/${chatId}`, { params }),
   send: (data) => api.post("/messages/send", data),
@@ -148,12 +152,15 @@ export const messageAPI = {
   deleteForMe: (messageId) => api.delete(`/messages/${messageId}/me`),
   deleteForEveryone: (messageId) =>
     api.delete(`/messages/${messageId}/everyone`),
-  // 🔥 NEW: Bulk delete
+  // Bulk delete
   bulkDeleteForMe: (messageIds) =>
     api.post("/messages/bulk-delete-me", { messageIds }),
   bulkDeleteForEveryone: (messageIds) =>
     api.post("/messages/bulk-delete-everyone", { messageIds }),
   search: (params) => api.get("/messages/search", { params }),
+
+  // 🔥 NEW: Leave cleanup for Option A disappearing messages
+  leaveCleanup: (chatId) => api.post(`/messages/${chatId}/leave-cleanup`),
 };
 
 // 🔔 Push Notification endpoints
