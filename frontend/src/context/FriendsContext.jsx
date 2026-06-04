@@ -21,7 +21,6 @@ export const FriendsProvider = ({ children }) => {
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [loadingFriends, setLoadingFriends] = useState(false);
 
-  // Fetch friends list
   const fetchFriends = useCallback(async () => {
     if (!user) return;
     setLoadingFriends(true);
@@ -35,7 +34,6 @@ export const FriendsProvider = ({ children }) => {
     }
   }, [user]);
 
-  // Fetch pending requests count
   const fetchPendingCount = useCallback(async () => {
     if (!user) return;
     try {
@@ -46,7 +44,11 @@ export const FriendsProvider = ({ children }) => {
     }
   }, [user]);
 
-  // Initial load
+  // 🔥 NEW: Remove a friend from list instantly (used after block)
+  const removeFriendById = useCallback((friendId) => {
+    setFriends((prev) => prev.filter((f) => f._id !== friendId));
+  }, []);
+
   useEffect(() => {
     if (user) {
       fetchFriends();
@@ -57,11 +59,9 @@ export const FriendsProvider = ({ children }) => {
     }
   }, [user, fetchFriends, fetchPendingCount]);
 
-  // Socket listeners for friend events
   useEffect(() => {
     if (!socket) return;
 
-    // New friend request received
     const handleNewRequest = (data) => {
       toast(`${data.sender.fullName} sent you a friend request 👋`, {
         icon: "🤝",
@@ -70,18 +70,15 @@ export const FriendsProvider = ({ children }) => {
       setPendingRequestsCount((prev) => prev + 1);
     };
 
-    // Your request was accepted
     const handleRequestAccepted = (data) => {
       toast.success(data.message || "Friend request accepted! 🎉");
       fetchFriends();
     };
 
-    // Your request was cancelled by sender
     const handleRequestCancelled = () => {
       fetchPendingCount();
     };
 
-    // Friend removed you
     const handleFriendRemoved = () => {
       fetchFriends();
     };
@@ -99,7 +96,6 @@ export const FriendsProvider = ({ children }) => {
     };
   }, [socket, fetchFriends, fetchPendingCount]);
 
-  // Update friend online status in real-time
   useEffect(() => {
     if (!socket) return;
 
@@ -136,6 +132,7 @@ export const FriendsProvider = ({ children }) => {
     setPendingRequestsCount,
     fetchFriends,
     fetchPendingCount,
+    removeFriendById, // 🔥 NEW
   };
 
   return (

@@ -53,6 +53,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Add after avatar field:
+    avatarPublicId: {
+      type: String,
+      default: "",
+    },
 
     // About/Bio text
     about: {

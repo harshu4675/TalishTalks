@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import InstallAppButton from "../common/InstallAppButton";
 import NotificationToggle from "../common/NotificationToggle";
@@ -6,12 +6,14 @@ import {
   HiOutlineX,
   HiOutlineUser,
   HiOutlinePencil,
-  HiOutlineRefresh,
+  HiOutlineCamera,
   HiOutlineLockClosed,
   HiOutlineKey,
   HiCheckCircle,
   HiOutlineBan,
   HiOutlineTrash,
+  HiOutlineLogout,
+  HiOutlineShieldCheck,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import { useAuth } from "../../hooks/useAuth";
@@ -34,15 +36,19 @@ const PASSWORD_KEY = "talish_site_password";
 const HINT_KEY = "talish_site_password_hint";
 
 const ProfileSettings = ({ isOpen, onClose }) => {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const { updateChatFlags, chats } = useChat();
-  const [activeTab, setActiveTab] = useState("profile");
 
   // Profile state
   const [fullName, setFullName] = useState(user?.fullName || "");
   const [about, setAbout] = useState(user?.about || "");
   const [avatar, setAvatar] = useState(user?.avatar || "");
   const [saving, setSaving] = useState(false);
+
+  // 🔥 Avatar upload state
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const avatarInputRef = useRef(null);
 
   // Password state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -51,15 +57,42 @@ const ProfileSettings = ({ isOpen, onClose }) => {
   const [newHint, setNewHint] = useState(localStorage.getItem(HINT_KEY) || "");
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
 
-  // 🔥 Phase 10: Blocked users state
+  // Blocked users state
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
   const [unblockingId, setUnblockingId] = useState(null);
+  const [showBlockedSection, setShowBlockedSection] = useState(false);
+
+  // Logout state
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useBackButton(isOpen, onClose);
 
-  // 🔥 Phase 10: Fetch blocked users when tab opens
+  // Sync user data when modal opens
+  useEffect(() => {
+    if (isOpen && user) {
+      setFullName(user.fullName || "");
+      setAbout(user.about || "");
+      setAvatar(user.avatar || "");
+    }
+  }, [isOpen, user]);
+
+  // Reset on close
+  useEffect(() => {
+    if (!isOpen) {
+      setShowPasswordSection(false);
+      setShowBlockedSection(false);
+      setBlockedUsers([]);
+      setPasswordSuccess(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    }
+  }, [isOpen]);
+
+  // Fetch blocked users when section expands
   const fetchBlockedUsers = useCallback(async () => {
     setLoadingBlocked(true);
     try {
@@ -73,36 +106,67 @@ const ProfileSettings = ({ isOpen, onClose }) => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "blocked" && isOpen) {
+    if (showBlockedSection && isOpen) {
       fetchBlockedUsers();
     }
-  }, [activeTab, isOpen, fetchBlockedUsers]);
+  }, [showBlockedSection, isOpen, fetchBlockedUsers]);
 
-  // Reset state when modal closes
-  useEffect(() => {
-    if (!isOpen) {
-      setActiveTab("profile");
-      setBlockedUsers([]);
+  // 🔥 Handle avatar file select + upload
+  const handleAvatarSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
     }
-  }, [isOpen]);
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return;
+    }
 
-  // 🔥 Phase 10: Unblock a user
+    // Show preview instantly
+    const previewUrl = URL.createObjectURL(file);
+    setAvatar(previewUrl);
+    setUploadingAvatar(true);
+    setUploadProgress(0);
+
+    try {
+      const formData = new FormData();
+      formData.append("avatar", file);
+
+      const res = await userAPI.uploadAvatar(formData, (progress) => {
+        setUploadProgress(progress);
+      });
+
+      const newAvatar = res.data.avatar;
+      setAvatar(newAvatar);
+      updateUser({ avatar: newAvatar });
+      toast.success("Profile photo updated! 📸");
+    } catch (err) {
+      // Revert preview on error
+      setAvatar(user?.avatar || "");
+      toast.error(err.response?.data?.message || "Failed to upload photo");
+    } finally {
+      setUploadingAvatar(false);
+      setUploadProgress(0);
+      URL.revokeObjectURL(previewUrl);
+      e.target.value = "";
+    }
+  };
+
+  // Unblock user
   const handleUnblock = async (targetUser) => {
     setUnblockingId(targetUser._id);
     try {
       await userAPI.unblock(targetUser._id);
-
-      // Remove from local list instantly
       setBlockedUsers((prev) => prev.filter((u) => u._id !== targetUser._id));
-
-      // Update chat flags if chat exists
       const relatedChat = chats.find(
         (c) => c.otherUser?._id === targetUser._id,
       );
       if (relatedChat) {
         updateChatFlags(relatedChat._id, { iBlockedThem: false });
       }
-
       toast.success(`${targetUser.fullName} unblocked ✓`);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to unblock");
@@ -111,6 +175,7 @@ const ProfileSettings = ({ isOpen, onClose }) => {
     }
   };
 
+  // Save profile
   const handleSaveProfile = async () => {
     if (fullName.trim().length < 2) {
       toast.error("Name must be at least 2 characters");
@@ -125,7 +190,6 @@ const ProfileSettings = ({ isOpen, onClose }) => {
       });
       updateUser(res.data.user);
       toast.success("Profile updated! ✨");
-      onClose();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to update profile");
     } finally {
@@ -133,18 +197,9 @@ const ProfileSettings = ({ isOpen, onClose }) => {
     }
   };
 
-  const regenerateAvatar = () => {
-    const seeds = [user?.username + Date.now()];
-    const colors = ["E8713A", "D4943A", "4A7CFF", "3D2B1F", "5C3D2E", "FB3640"];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    setAvatar(
-      `https://api.dicebear.com/7.x/initials/svg?seed=${seeds[0]}&backgroundColor=${color}&textColor=ffffff`,
-    );
-  };
-
+  // Change site password
   const handleChangeSitePassword = async (e) => {
     e.preventDefault();
-
     if (!currentPassword || !newPassword || !confirmNewPassword) {
       toast.error("Please fill all password fields");
       return;
@@ -157,57 +212,53 @@ const ProfileSettings = ({ isOpen, onClose }) => {
       toast.error("New passwords do not match");
       return;
     }
-
     const savedPassword = localStorage.getItem(PASSWORD_KEY);
     const currentHashed = hashPassword(currentPassword);
-
     if (currentHashed !== savedPassword) {
       toast.error("Current password is incorrect");
       return;
     }
-
     setChangingPassword(true);
     await new Promise((r) => setTimeout(r, 500));
-
     const newHashed = hashPassword(newPassword);
     localStorage.setItem(PASSWORD_KEY, newHashed);
-
     if (newHint.trim()) {
       localStorage.setItem(HINT_KEY, newHint.trim());
     } else {
       localStorage.removeItem(HINT_KEY);
     }
-
     setPasswordSuccess(true);
     setChangingPassword(false);
-    toast.success("Site password changed successfully! 🔒");
-
+    toast.success("Site password changed! 🔒");
     setTimeout(() => {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
       setPasswordSuccess(false);
+      setShowPasswordSection(false);
     }, 2000);
   };
 
-  // Tab config
-  const tabs = [
-    {
-      key: "profile",
-      label: "Profile",
-      icon: <HiOutlineUser className="text-base" />,
-    },
-    {
-      key: "password",
-      label: "Password",
-      icon: <HiOutlineLockClosed className="text-base" />,
-    },
-    {
-      key: "blocked",
-      label: "Blocked",
-      icon: <HiOutlineBan className="text-base" />,
-    },
-  ];
+  // Logout
+  const handleLogout = async () => {
+    if (!window.confirm("Are you sure you want to logout?")) return;
+    setLoggingOut(true);
+    await logout();
+    toast.success("Logged out successfully 👋");
+  };
+
+  // Section component for consistent styling
+  const Section = ({ title, children }) => (
+    <div className="space-y-3">
+      <p
+        className="text-xs font-semibold uppercase tracking-widest px-1"
+        style={{ color: "var(--color-textMuted)" }}
+      >
+        {title}
+      </p>
+      {children}
+    </div>
+  );
 
   return (
     <AnimatePresence>
@@ -225,7 +276,7 @@ const ProfileSettings = ({ isOpen, onClose }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
             onClick={onClose}
           >
             <motion.div
@@ -234,7 +285,7 @@ const ProfileSettings = ({ isOpen, onClose }) => {
               exit={{ scale: 0.95, y: 20, opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md rounded-2xl shadow-card-hover overflow-hidden flex flex-col my-auto"
+              className="w-full max-w-md rounded-2xl shadow-card-hover flex flex-col my-auto"
               style={{
                 backgroundColor: "var(--color-bgCard)",
                 border: "1px solid var(--color-border)",
@@ -246,9 +297,9 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                 className="p-4 sm:p-5 border-b flex items-center justify-between flex-shrink-0"
                 style={{ borderColor: "var(--color-border)" }}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3">
                   <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    className="w-10 h-10 rounded-xl flex items-center justify-center"
                     style={{
                       background:
                         "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
@@ -256,563 +307,170 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                   >
                     <HiOutlineUser className="text-white text-lg" />
                   </div>
-                  <div className="min-w-0">
+                  <div>
                     <h3
-                      className="text-base sm:text-lg font-display font-semibold truncate"
+                      className="text-base sm:text-lg font-display font-semibold"
                       style={{ color: "var(--color-text)" }}
                     >
                       Settings
                     </h3>
                     <p
-                      className="text-xs truncate"
+                      className="text-xs"
                       style={{ color: "var(--color-textMuted)" }}
                     >
-                      Manage your account & security
+                      Manage your account
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={onClose}
-                  className="p-2 rounded-lg transition-colors hover:bg-black/20 flex-shrink-0"
+                  className="p-2 rounded-lg transition-colors hover:bg-black/20"
                   style={{ color: "var(--color-textMuted)" }}
                 >
                   <HiOutlineX className="text-lg" />
                 </button>
               </div>
 
-              {/* Tabs - 3 tabs now */}
-              <div className="flex px-4 sm:px-5 pt-3 sm:pt-4 gap-1 flex-shrink-0">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className="flex-1 px-2 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center justify-center gap-1.5"
-                    style={{
-                      backgroundColor:
-                        activeTab === tab.key
-                          ? "var(--color-bgInput)"
-                          : "transparent",
-                      color:
-                        activeTab === tab.key
-                          ? "var(--color-text)"
-                          : "var(--color-textMuted)",
-                      borderBottom:
-                        activeTab === tab.key
-                          ? "2px solid var(--color-primary)"
-                          : "2px solid transparent",
-                    }}
-                  >
-                    {tab.icon}
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              {/* Scrollable content */}
+              <div className="overflow-y-auto scrollbar-thin flex-1 min-h-0 p-4 sm:p-5 space-y-6">
+                {/* ── PROFILE SECTION ── */}
+                <Section title="Profile">
+                  {/* Avatar */}
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative">
+                      <img
+                        src={avatar}
+                        alt={fullName}
+                        className="w-24 h-24 rounded-full object-cover"
+                        style={{
+                          border: "4px solid var(--color-primary)",
+                          opacity: uploadingAvatar ? 0.7 : 1,
+                        }}
+                      />
 
-              {/* Content Area */}
-              <div className="overflow-y-auto scrollbar-thin flex-1 min-h-0">
-                {/* Profile Tab */}
-                {activeTab === "profile" && (
-                  <div className="p-4 sm:p-5 space-y-4">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="relative">
-                        <img
-                          src={avatar}
-                          alt={fullName}
-                          className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover"
-                          style={{
-                            border: "4px solid var(--color-primary)",
-                          }}
-                        />
-                        <button
-                          onClick={regenerateAvatar}
-                          className="absolute bottom-0 right-0 p-2 rounded-full shadow-glow hover:scale-110 transition-transform"
-                          style={{
-                            background:
-                              "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
-                          }}
-                          title="Generate new avatar"
-                        >
-                          <HiOutlineRefresh className="text-white text-sm" />
-                        </button>
-                      </div>
-                      <p
-                        className="text-xs"
-                        style={{ color: "var(--color-textMuted)" }}
+                      {/* Upload progress ring */}
+                      {uploadingAvatar && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <svg className="w-24 h-24 -rotate-90 absolute">
+                            <circle
+                              cx="48"
+                              cy="48"
+                              r="44"
+                              stroke="var(--color-primary)"
+                              strokeWidth="4"
+                              fill="none"
+                              strokeDasharray={2 * Math.PI * 44}
+                              strokeDashoffset={
+                                2 * Math.PI * 44 * (1 - uploadProgress / 100)
+                              }
+                              className="transition-all duration-300"
+                            />
+                          </svg>
+                          <span className="text-white text-xs font-bold z-10">
+                            {uploadProgress}%
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Camera button */}
+                      <button
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={uploadingAvatar}
+                        className="absolute bottom-0 right-0 p-2 rounded-full shadow-glow hover:scale-110 transition-transform disabled:opacity-50"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
+                        }}
+                        title="Change photo"
                       >
-                        Click refresh to generate a new avatar
-                      </p>
+                        <HiOutlineCamera className="text-white text-sm" />
+                      </button>
+
+                      {/* Hidden file input */}
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarSelect}
+                        className="hidden"
+                      />
                     </div>
+                    <p
+                      className="text-xs"
+                      style={{ color: "var(--color-textMuted)" }}
+                    >
+                      Tap camera to change photo
+                    </p>
+                  </div>
 
-                    <div>
-                      <label
-                        className="block text-xs font-medium mb-1.5"
+                  {/* Full name */}
+                  <div>
+                    <label
+                      className="block text-xs font-medium mb-1.5"
+                      style={{ color: "var(--color-textMuted)" }}
+                    >
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <HiOutlinePencil
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-base"
                         style={{ color: "var(--color-textMuted)" }}
-                      >
-                        Full Name
-                      </label>
-                      <div className="relative">
-                        <HiOutlinePencil
-                          className="absolute left-3 top-1/2 -translate-y-1/2 text-base"
-                          style={{ color: "var(--color-textMuted)" }}
-                        />
-                        <input
-                          type="text"
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                          className="input-dark pl-10"
-                          placeholder="Your full name"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label
-                        className="block text-xs font-medium mb-1.5"
-                        style={{ color: "var(--color-textMuted)" }}
-                      >
-                        Username (cannot be changed)
-                      </label>
+                      />
                       <input
                         type="text"
-                        value={`@${user?.username}`}
-                        disabled
-                        className="input-dark opacity-60 cursor-not-allowed"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="input-dark pl-10"
+                        placeholder="Your full name"
                       />
                     </div>
-
-                    <div>
-                      <label
-                        className="block text-xs font-medium mb-1.5"
-                        style={{ color: "var(--color-textMuted)" }}
-                      >
-                        About
-                      </label>
-                      <textarea
-                        value={about}
-                        onChange={(e) => setAbout(e.target.value)}
-                        rows={3}
-                        maxLength={150}
-                        className="input-dark resize-none"
-                        placeholder="Tell us about yourself..."
-                      />
-                      <p
-                        className="text-xs mt-1 text-right"
-                        style={{ color: "var(--color-textMuted)" }}
-                      >
-                        {about.length}/150
-                      </p>
-                    </div>
-
-                    <div>
-                      <label
-                        className="block text-xs font-medium mb-1.5"
-                        style={{ color: "var(--color-textMuted)" }}
-                      >
-                        Notifications
-                      </label>
-                      <NotificationToggle />
-                    </div>
-
-                    <div>
-                      <label
-                        className="block text-xs font-medium mb-1.5"
-                        style={{ color: "var(--color-textMuted)" }}
-                      >
-                        App
-                      </label>
-                      <InstallAppButton variant="card" />
-                    </div>
-
-                    <div>
-                      <label
-                        className="block text-xs font-medium mb-1.5"
-                        style={{ color: "var(--color-textMuted)" }}
-                      >
-                        Security
-                      </label>
-                      <SiteLockToggle />
-                    </div>
                   </div>
-                )}
 
-                {/* Password Tab */}
-                {activeTab === "password" && (
-                  <div className="p-4 sm:p-5 space-y-4">
-                    <div
-                      className="p-4 rounded-xl"
-                      style={{
-                        backgroundColor: "var(--color-bgInput)",
-                        border: "1px solid var(--color-border)",
-                      }}
+                  {/* Username */}
+                  <div>
+                    <label
+                      className="block text-xs font-medium mb-1.5"
+                      style={{ color: "var(--color-textMuted)" }}
                     >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{
-                            background:
-                              "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primaryDark) 100%)",
-                          }}
-                        >
-                          <HiOutlineLockClosed className="text-white text-base" />
-                        </div>
-                        <div>
-                          <p
-                            className="text-sm font-semibold mb-1"
-                            style={{ color: "var(--color-text)" }}
-                          >
-                            Change Site Password
-                          </p>
-                          <p
-                            className="text-xs"
-                            style={{ color: "var(--color-textMuted)" }}
-                          >
-                            This is the password used to access this website on
-                            this device.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {passwordSuccess ? (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="text-center py-8"
-                      >
-                        <HiCheckCircle className="text-green-500 text-5xl mx-auto mb-3" />
-                        <p
-                          className="font-semibold mb-1"
-                          style={{ color: "var(--color-text)" }}
-                        >
-                          Password Changed!
-                        </p>
-                        <p
-                          className="text-xs"
-                          style={{ color: "var(--color-textMuted)" }}
-                        >
-                          Your new password is now active 🔒
-                        </p>
-                      </motion.div>
-                    ) : (
-                      <form
-                        onSubmit={handleChangeSitePassword}
-                        className="space-y-4"
-                      >
-                        <div>
-                          <label
-                            className="block text-xs font-medium mb-1.5"
-                            style={{ color: "var(--color-textMuted)" }}
-                          >
-                            Current Password
-                          </label>
-                          <div className="relative">
-                            <HiOutlineLockClosed
-                              className="absolute left-3 top-1/2 -translate-y-1/2 text-lg"
-                              style={{ color: "var(--color-textMuted)" }}
-                            />
-                            <input
-                              type="password"
-                              value={currentPassword}
-                              onChange={(e) =>
-                                setCurrentPassword(e.target.value)
-                              }
-                              placeholder="Enter current password"
-                              className="input-dark pl-10"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label
-                            className="block text-xs font-medium mb-1.5"
-                            style={{ color: "var(--color-textMuted)" }}
-                          >
-                            New Password (min 4 chars)
-                          </label>
-                          <div className="relative">
-                            <HiOutlineKey
-                              className="absolute left-3 top-1/2 -translate-y-1/2 text-lg"
-                              style={{ color: "var(--color-textMuted)" }}
-                            />
-                            <input
-                              type="password"
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              placeholder="Create new password"
-                              className="input-dark pl-10"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label
-                            className="block text-xs font-medium mb-1.5"
-                            style={{ color: "var(--color-textMuted)" }}
-                          >
-                            Confirm New Password
-                          </label>
-                          <div className="relative">
-                            <HiOutlineKey
-                              className="absolute left-3 top-1/2 -translate-y-1/2 text-lg"
-                              style={{ color: "var(--color-textMuted)" }}
-                            />
-                            <input
-                              type="password"
-                              value={confirmNewPassword}
-                              onChange={(e) =>
-                                setConfirmNewPassword(e.target.value)
-                              }
-                              placeholder="Re-enter new password"
-                              className="input-dark pl-10"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label
-                            className="block text-xs font-medium mb-1.5"
-                            style={{ color: "var(--color-textMuted)" }}
-                          >
-                            Password Hint (optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={newHint}
-                            onChange={(e) => setNewHint(e.target.value)}
-                            placeholder="e.g. My pet's name"
-                            maxLength={50}
-                            className="input-dark"
-                          />
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={changingPassword}
-                          className="btn-accent w-full"
-                        >
-                          {changingPassword ? (
-                            <span className="flex items-center justify-center gap-2">
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              Changing...
-                            </span>
-                          ) : (
-                            "Change Password"
-                          )}
-                        </button>
-                      </form>
-                    )}
+                      Username (cannot be changed)
+                    </label>
+                    <input
+                      type="text"
+                      value={`@${user?.username}`}
+                      disabled
+                      className="input-dark opacity-60 cursor-not-allowed"
+                    />
                   </div>
-                )}
 
-                {/* 🔥 Phase 10: Blocked Users Tab */}
-                {activeTab === "blocked" && (
-                  <div className="p-4 sm:p-5 space-y-4">
-                    {/* Info banner */}
-                    <div
-                      className="p-4 rounded-xl"
-                      style={{
-                        backgroundColor: "var(--color-bgInput)",
-                        border: "1px solid var(--color-border)",
-                      }}
+                  {/* About */}
+                  <div>
+                    <label
+                      className="block text-xs font-medium mb-1.5"
+                      style={{ color: "var(--color-textMuted)" }}
                     >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{
-                            backgroundColor: "rgba(239, 68, 68, 0.15)",
-                          }}
-                        >
-                          <HiOutlineBan className="text-red-400 text-base" />
-                        </div>
-                        <div>
-                          <p
-                            className="text-sm font-semibold mb-1"
-                            style={{ color: "var(--color-text)" }}
-                          >
-                            Blocked Users
-                          </p>
-                          <p
-                            className="text-xs"
-                            style={{ color: "var(--color-textMuted)" }}
-                          >
-                            Blocked users cannot message you or see your online
-                            status.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Loading state */}
-                    {loadingBlocked ? (
-                      <div className="space-y-3">
-                        {[1, 2, 3].map((i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-3 p-3 rounded-xl animate-pulse"
-                            style={{
-                              backgroundColor: "var(--color-bgInput)",
-                            }}
-                          >
-                            <div
-                              className="w-11 h-11 rounded-full skeleton flex-shrink-0"
-                              style={{
-                                backgroundColor: "var(--color-border)",
-                              }}
-                            />
-                            <div className="flex-1 space-y-2">
-                              <div
-                                className="h-3.5 rounded w-2/3"
-                                style={{
-                                  backgroundColor: "var(--color-border)",
-                                }}
-                              />
-                              <div
-                                className="h-3 rounded w-1/3"
-                                style={{
-                                  backgroundColor: "var(--color-border)",
-                                }}
-                              />
-                            </div>
-                            <div
-                              className="w-20 h-8 rounded-lg"
-                              style={{
-                                backgroundColor: "var(--color-border)",
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ) : blockedUsers.length === 0 ? (
-                      // Empty state
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-center py-12"
-                      >
-                        <div className="text-5xl mb-3">🚫</div>
-                        <p
-                          className="text-sm font-medium mb-1"
-                          style={{ color: "var(--color-text)" }}
-                        >
-                          No blocked users
-                        </p>
-                        <p
-                          className="text-xs"
-                          style={{ color: "var(--color-textMuted)" }}
-                        >
-                          Users you block will appear here
-                        </p>
-                      </motion.div>
-                    ) : (
-                      // Blocked users list
-                      <div className="space-y-2">
-                        <p
-                          className="text-xs font-medium uppercase tracking-wide px-1"
-                          style={{ color: "var(--color-textMuted)" }}
-                        >
-                          {blockedUsers.length} blocked{" "}
-                          {blockedUsers.length === 1 ? "user" : "users"}
-                        </p>
-
-                        <AnimatePresence>
-                          {blockedUsers.map((blockedUser, index) => (
-                            <motion.div
-                              key={blockedUser._id}
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              exit={{ opacity: 0, x: 10, height: 0 }}
-                              transition={{ delay: index * 0.04 }}
-                              className="flex items-center gap-3 p-3 rounded-xl"
-                              style={{
-                                backgroundColor: "var(--color-bgInput)",
-                                border: "1px solid var(--color-border)",
-                              }}
-                            >
-                              {/* Avatar */}
-                              <div className="relative flex-shrink-0">
-                                <img
-                                  src={blockedUser.avatar}
-                                  alt={blockedUser.fullName}
-                                  className="w-11 h-11 rounded-full object-cover"
-                                  style={{
-                                    border: "1px solid var(--color-border)",
-                                    opacity: 0.7,
-                                    filter: "grayscale(30%)",
-                                  }}
-                                />
-                                <div
-                                  className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center"
-                                  style={{
-                                    backgroundColor: "rgba(239,68,68,0.9)",
-                                    border: "1.5px solid var(--color-bgCard)",
-                                  }}
-                                >
-                                  <HiOutlineBan className="text-white text-[9px]" />
-                                </div>
-                              </div>
-
-                              {/* Info */}
-                              <div className="flex-1 min-w-0">
-                                <p
-                                  className="text-sm font-semibold truncate"
-                                  style={{ color: "var(--color-text)" }}
-                                >
-                                  {blockedUser.fullName}
-                                </p>
-                                <p
-                                  className="text-xs truncate"
-                                  style={{
-                                    color: "var(--color-textMuted)",
-                                  }}
-                                >
-                                  @{blockedUser.username}
-                                </p>
-                              </div>
-
-                              {/* Unblock button */}
-                              <button
-                                onClick={() => handleUnblock(blockedUser)}
-                                disabled={unblockingId === blockedUser._id}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex-shrink-0"
-                                style={{
-                                  backgroundColor: "rgba(239, 68, 68, 0.1)",
-                                  color: "#f87171",
-                                  border: "1px solid rgba(239,68,68,0.3)",
-                                }}
-                              >
-                                {unblockingId === blockedUser._id ? (
-                                  <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  <HiOutlineTrash className="text-xs" />
-                                )}
-                                Unblock
-                              </button>
-                            </motion.div>
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    )}
+                      About
+                    </label>
+                    <textarea
+                      value={about}
+                      onChange={(e) => setAbout(e.target.value)}
+                      rows={2}
+                      maxLength={150}
+                      className="input-dark resize-none"
+                      placeholder="Tell us about yourself..."
+                    />
+                    <p
+                      className="text-xs mt-1 text-right"
+                      style={{ color: "var(--color-textMuted)" }}
+                    >
+                      {about.length}/150
+                    </p>
                   </div>
-                )}
-              </div>
 
-              {/* Footer - only for profile tab */}
-              {activeTab === "profile" && (
-                <div
-                  className="p-4 sm:p-5 border-t flex gap-2 flex-shrink-0"
-                  style={{ borderColor: "var(--color-border)" }}
-                >
-                  <button
-                    onClick={onClose}
-                    className="btn-ghost flex-1"
-                    disabled={saving}
-                  >
-                    Cancel
-                  </button>
+                  {/* Save button */}
                   <button
                     onClick={handleSaveProfile}
                     disabled={saving}
-                    className="btn-accent flex-1"
+                    className="btn-accent w-full"
                   >
                     {saving ? (
                       <span className="flex items-center justify-center gap-2">
@@ -820,11 +478,451 @@ const ProfileSettings = ({ isOpen, onClose }) => {
                         Saving...
                       </span>
                     ) : (
-                      "Save Changes"
+                      "Save Profile"
                     )}
                   </button>
-                </div>
-              )}
+                </Section>
+
+                {/* Divider */}
+                <div
+                  className="border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                />
+
+                {/* ── NOTIFICATIONS ── */}
+                <Section title="Notifications">
+                  <NotificationToggle />
+                </Section>
+
+                {/* Divider */}
+                <div
+                  className="border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                />
+
+                {/* ── APP ── */}
+                <Section title="App">
+                  <InstallAppButton variant="card" />
+                </Section>
+
+                {/* Divider */}
+                <div
+                  className="border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                />
+
+                {/* ── SECURITY ── */}
+                <Section title="Security">
+                  {/* Site Lock Toggle */}
+                  <SiteLockToggle />
+
+                  {/* Change site password - collapsible */}
+                  <div
+                    className="rounded-xl overflow-hidden"
+                    style={{
+                      border: "1px solid var(--color-border)",
+                    }}
+                  >
+                    <button
+                      onClick={() => setShowPasswordSection((p) => !p)}
+                      className="w-full flex items-center gap-3 p-3 transition-colors hover:bg-black/10"
+                    >
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{
+                          backgroundColor:
+                            "rgba(var(--color-primary-rgb, 124,58,237),0.15)",
+                        }}
+                      >
+                        <HiOutlineShieldCheck
+                          className="text-base"
+                          style={{ color: "var(--color-primary)" }}
+                        />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--color-text)" }}
+                        >
+                          Change Site Password
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--color-textMuted)" }}
+                        >
+                          Update your app lock password
+                        </p>
+                      </div>
+                      <motion.span
+                        animate={{
+                          rotate: showPasswordSection ? 180 : 0,
+                        }}
+                        className="text-xs"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
+                        ▼
+                      </motion.span>
+                    </button>
+
+                    <AnimatePresence>
+                      {showPasswordSection && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div
+                            className="p-4 space-y-3 border-t"
+                            style={{
+                              borderColor: "var(--color-border)",
+                              backgroundColor: "var(--color-bg)",
+                            }}
+                          >
+                            {passwordSuccess ? (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="text-center py-4"
+                              >
+                                <HiCheckCircle className="text-green-500 text-4xl mx-auto mb-2" />
+                                <p
+                                  className="text-sm font-semibold"
+                                  style={{ color: "var(--color-text)" }}
+                                >
+                                  Password Changed!
+                                </p>
+                              </motion.div>
+                            ) : (
+                              <form
+                                onSubmit={handleChangeSitePassword}
+                                className="space-y-3"
+                              >
+                                <div className="relative">
+                                  <HiOutlineLockClosed
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-base"
+                                    style={{
+                                      color: "var(--color-textMuted)",
+                                    }}
+                                  />
+                                  <input
+                                    type="password"
+                                    value={currentPassword}
+                                    onChange={(e) =>
+                                      setCurrentPassword(e.target.value)
+                                    }
+                                    placeholder="Current password"
+                                    className="input-dark pl-10"
+                                  />
+                                </div>
+                                <div className="relative">
+                                  <HiOutlineKey
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-base"
+                                    style={{
+                                      color: "var(--color-textMuted)",
+                                    }}
+                                  />
+                                  <input
+                                    type="password"
+                                    value={newPassword}
+                                    onChange={(e) =>
+                                      setNewPassword(e.target.value)
+                                    }
+                                    placeholder="New password (min 4)"
+                                    className="input-dark pl-10"
+                                  />
+                                </div>
+                                <div className="relative">
+                                  <HiOutlineKey
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-base"
+                                    style={{
+                                      color: "var(--color-textMuted)",
+                                    }}
+                                  />
+                                  <input
+                                    type="password"
+                                    value={confirmNewPassword}
+                                    onChange={(e) =>
+                                      setConfirmNewPassword(e.target.value)
+                                    }
+                                    placeholder="Confirm new password"
+                                    className="input-dark pl-10"
+                                  />
+                                </div>
+                                <input
+                                  type="text"
+                                  value={newHint}
+                                  onChange={(e) => setNewHint(e.target.value)}
+                                  placeholder="Password hint (optional)"
+                                  maxLength={50}
+                                  className="input-dark"
+                                />
+                                <button
+                                  type="submit"
+                                  disabled={changingPassword}
+                                  className="btn-accent w-full"
+                                >
+                                  {changingPassword ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                      Changing...
+                                    </span>
+                                  ) : (
+                                    "Change Password"
+                                  )}
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </Section>
+
+                {/* Divider */}
+                <div
+                  className="border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                />
+
+                {/* ── BLOCKED USERS ── */}
+                <Section title="Privacy">
+                  <div
+                    className="rounded-xl overflow-hidden"
+                    style={{
+                      border: "1px solid var(--color-border)",
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setShowBlockedSection((p) => !p);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 transition-colors hover:bg-black/10"
+                    >
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{
+                          backgroundColor: "rgba(239, 68, 68, 0.15)",
+                        }}
+                      >
+                        <HiOutlineBan className="text-red-400 text-base" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--color-text)" }}
+                        >
+                          Blocked Users
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--color-textMuted)" }}
+                        >
+                          Manage who you've blocked
+                        </p>
+                      </div>
+                      <motion.span
+                        animate={{
+                          rotate: showBlockedSection ? 180 : 0,
+                        }}
+                        className="text-xs"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
+                        ▼
+                      </motion.span>
+                    </button>
+
+                    <AnimatePresence>
+                      {showBlockedSection && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div
+                            className="border-t"
+                            style={{
+                              borderColor: "var(--color-border)",
+                              backgroundColor: "var(--color-bg)",
+                            }}
+                          >
+                            {loadingBlocked ? (
+                              <div className="p-4 space-y-3">
+                                {[1, 2].map((i) => (
+                                  <div
+                                    key={i}
+                                    className="flex items-center gap-3 animate-pulse"
+                                  >
+                                    <div
+                                      className="w-10 h-10 rounded-full"
+                                      style={{
+                                        backgroundColor: "var(--color-border)",
+                                      }}
+                                    />
+                                    <div className="flex-1 space-y-1.5">
+                                      <div
+                                        className="h-3 rounded w-1/2"
+                                        style={{
+                                          backgroundColor:
+                                            "var(--color-border)",
+                                        }}
+                                      />
+                                      <div
+                                        className="h-2.5 rounded w-1/3"
+                                        style={{
+                                          backgroundColor:
+                                            "var(--color-border)",
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : blockedUsers.length === 0 ? (
+                              <div className="text-center py-6">
+                                <p className="text-2xl mb-1">🚫</p>
+                                <p
+                                  className="text-xs"
+                                  style={{
+                                    color: "var(--color-textMuted)",
+                                  }}
+                                >
+                                  No blocked users
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="p-3 space-y-2">
+                                <AnimatePresence>
+                                  {blockedUsers.map((blockedUser) => (
+                                    <motion.div
+                                      key={blockedUser._id}
+                                      initial={{ opacity: 0, x: -10 }}
+                                      animate={{ opacity: 1, x: 0 }}
+                                      exit={{
+                                        opacity: 0,
+                                        x: 10,
+                                        height: 0,
+                                      }}
+                                      className="flex items-center gap-3 p-2.5 rounded-xl"
+                                      style={{
+                                        backgroundColor: "var(--color-bgInput)",
+                                        border: "1px solid var(--color-border)",
+                                      }}
+                                    >
+                                      <div className="relative flex-shrink-0">
+                                        <img
+                                          src={blockedUser.avatar}
+                                          alt={blockedUser.fullName}
+                                          className="w-10 h-10 rounded-full object-cover"
+                                          style={{
+                                            opacity: 0.7,
+                                            filter: "grayscale(30%)",
+                                          }}
+                                        />
+                                        <div
+                                          className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center"
+                                          style={{
+                                            backgroundColor:
+                                              "rgba(239,68,68,0.9)",
+                                            border:
+                                              "1.5px solid var(--color-bgCard)",
+                                          }}
+                                        >
+                                          <HiOutlineBan className="text-white text-[9px]" />
+                                        </div>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p
+                                          className="text-sm font-semibold truncate"
+                                          style={{
+                                            color: "var(--color-text)",
+                                          }}
+                                        >
+                                          {blockedUser.fullName}
+                                        </p>
+                                        <p
+                                          className="text-xs truncate"
+                                          style={{
+                                            color: "var(--color-textMuted)",
+                                          }}
+                                        >
+                                          @{blockedUser.username}
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={() =>
+                                          handleUnblock(blockedUser)
+                                        }
+                                        disabled={
+                                          unblockingId === blockedUser._id
+                                        }
+                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex-shrink-0"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(239, 68, 68, 0.1)",
+                                          color: "#f87171",
+                                          border:
+                                            "1px solid rgba(239,68,68,0.3)",
+                                        }}
+                                      >
+                                        {unblockingId === blockedUser._id ? (
+                                          <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <HiOutlineTrash className="text-xs" />
+                                        )}
+                                        Unblock
+                                      </button>
+                                    </motion.div>
+                                  ))}
+                                </AnimatePresence>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </Section>
+
+                {/* Divider */}
+                <div
+                  className="border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                />
+
+                {/* ── LOGOUT ── */}
+                <Section title="Account">
+                  <button
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                      {loggingOut ? (
+                        <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <HiOutlineLogout className="text-red-400 text-base" />
+                      )}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-medium text-red-400">
+                        {loggingOut ? "Logging out..." : "Logout"}
+                      </p>
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
+                        Sign out of your account
+                      </p>
+                    </div>
+                  </button>
+                </Section>
+
+                {/* Bottom spacing */}
+                <div className="h-2" />
+              </div>
             </motion.div>
           </motion.div>
         </>

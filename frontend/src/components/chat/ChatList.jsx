@@ -8,12 +8,14 @@ import {
   HiOutlineLockClosed,
   HiOutlineLockOpen,
   HiOutlineArrowLeft,
+  HiOutlineBan,
 } from "react-icons/hi";
 import { TbPin } from "react-icons/tb";
 import { HiOutlineBellSlash } from "react-icons/hi2";
 import { useSocket } from "../../hooks/useSocket";
 import { useAuth } from "../../hooks/useAuth";
 import { useChat } from "../../hooks/useChat";
+import { useFriends } from "../../hooks/useFriends";
 import { chatAPI, userAPI, friendAPI } from "../../services/api";
 import ChatActionSheet from "./ChatActionSheet";
 import PinModal from "./PinModal";
@@ -23,6 +25,7 @@ const LONG_PRESS_DURATION = 500;
 const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
   const { isUserOnline } = useSocket();
   const { user } = useAuth();
+  const { removeFriendById } = useFriends(); // 🔥 NEW
   const {
     updateChatFlags,
     removeChatFromList,
@@ -38,10 +41,9 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  // PIN modal state
   const [pinModal, setPinModal] = useState({
     open: false,
-    mode: "verify", // "set" | "verify" | "remove"
+    mode: "verify",
     chat: null,
     onSubmit: null,
     title: "",
@@ -51,7 +53,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
   const pressTimerRef = useRef(null);
   const longPressedRef = useRef(false);
 
-  // ============ FORMATTERS ============
   const formatTime = (date) => {
     if (!date) return "";
     const d = new Date(date);
@@ -73,15 +74,12 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     return text.length > len ? text.slice(0, len) + "..." : text;
   };
 
-  // ============ FILTER CHATS ============
-  // Hide locked chats from normal view; show only locked chats in locked-section view
   const visibleChats = showLockedSection
     ? chats.filter((c) => c.isLocked)
     : chats.filter((c) => !c.isLocked);
 
   const lockedCount = chats.filter((c) => c.isLocked).length;
 
-  // ============ LONG-PRESS ============
   const handlePressStart = (e, chat) => {
     longPressedRef.current = false;
     pressTimerRef.current = setTimeout(() => {
@@ -109,16 +107,13 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
       longPressedRef.current = false;
       return;
     }
-
     if (selectMode) {
       toggleSelect(chat._id);
       return;
     }
-
     onChatSelect(chat);
   };
 
-  // ============ MULTI-SELECT ============
   const toggleSelect = (chatId) => {
     setSelectedIds((prev) => {
       const updated = new Set(prev);
@@ -157,9 +152,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     exitSelectMode();
   };
 
-  // ============ LOCK ACTIONS ============
   const openLockedSection = async () => {
-    // Check if user has any locked chats
     if (lockedCount === 0) {
       toast("No locked chats yet. Lock one from the chat menu!", {
         icon: "🔒",
@@ -173,7 +166,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
       title: "View Locked Chats",
       subtitle: "Enter your PIN to access locked chats",
       onSubmit: async (pin) => {
-        // Verify PIN by trying to unlock the first locked chat
         const firstLocked = chats.find((c) => c.isLocked);
         if (!firstLocked) throw new Error("No locked chats");
         await chatAPI.unlock(firstLocked._id, pin);
@@ -188,10 +180,8 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     lockAllAgain();
   };
 
-  // ============ CHAT CLICK (locked chat handling) ============
   const handleProtectedChatClick = (chat) => {
     if (chat.isLocked && !unlockedChats.has(chat._id)) {
-      // Should not happen since we hide locked chats, but as safety
       setPinModal({
         open: true,
         mode: "verify",
@@ -209,7 +199,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     handleChatClick(chat);
   };
 
-  // ============ ACTION SHEET HANDLERS ============
   const handleAction = async (actionId) => {
     const chat = actionSheetChat;
     if (!chat) return;
@@ -238,7 +227,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
         }
         case "lock": {
           if (chat.isLocked) {
-            // Remove lock — need PIN
             setPinModal({
               open: true,
               mode: "remove",
@@ -253,7 +241,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
               },
             });
           } else {
-            // Set/use lock — beautiful PIN flow
             setPinModal({
               open: true,
               mode: "set",
@@ -293,6 +280,8 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
               return;
             await userAPI.block(otherUserId);
             updateChatFlags(chat._id, { iBlockedThem: true });
+            // 🔥 Remove from friends list instantly
+            removeFriendById(otherUserId);
             toast.success(`${chat.otherUser.fullName} blocked 🚫`);
             fetchChats();
           }
@@ -306,6 +295,8 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
           )
             return;
           await friendAPI.removeFriend(otherUserId);
+          // 🔥 Remove from friends list instantly
+          removeFriendById(otherUserId);
           toast.success("Friend removed");
           fetchChats();
           break;
@@ -330,7 +321,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     }
   };
 
-  // ============ LOADING / EMPTY ============
   if (loading) {
     return (
       <div className="space-y-1 p-2">
@@ -350,10 +340,9 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
     );
   }
 
-  // ============ RENDER ============
   return (
     <>
-      {/* 🔥 Multi-select header */}
+      {/* Multi-select header */}
       <AnimatePresence>
         {selectMode && (
           <motion.div
@@ -396,7 +385,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
         )}
       </AnimatePresence>
 
-      {/* 🔥 Locked-section header */}
+      {/* Locked-section header */}
       {showLockedSection && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -429,7 +418,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
         </motion.div>
       )}
 
-      {/* 🔥 "Locked chats" entry button (only in normal view) */}
+      {/* Locked chats entry button */}
       {!showLockedSection && !selectMode && lockedCount > 0 && (
         <button
           onClick={openLockedSection}
@@ -464,7 +453,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
         </button>
       )}
 
-      {/* Empty state for locked section */}
+      {/* Empty states */}
       {showLockedSection && lockedCount === 0 && (
         <div className="text-center py-12 px-4">
           <div className="text-5xl mb-3">🔓</div>
@@ -477,7 +466,6 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
         </div>
       )}
 
-      {/* Empty state for main list */}
       {!showLockedSection && visibleChats.length === 0 && lockedCount === 0 && (
         <div className="text-center py-12 px-4">
           <div className="text-5xl mb-3 animate-float">💭</div>
@@ -506,6 +494,9 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
 
             const showUnreadBadge =
               (chat.unreadCount > 0 || chat.isMarkedUnread) && !isActive;
+
+            // 🔥 Blocked state
+            const isBlocked = chat.iBlockedThem || chat.theyBlockedMe;
 
             return (
               <motion.div
@@ -559,15 +550,37 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                     )}
                   </div>
                 ) : (
+                  // 🔥 Avatar with indicators
                   <div className="relative flex-shrink-0">
                     <img
                       src={otherUser.avatar}
                       alt={otherUser.fullName}
                       className="w-12 h-12 rounded-full object-cover border border-dark-200"
+                      style={{
+                        opacity: isBlocked ? 0.6 : 1,
+                        filter: isBlocked ? "grayscale(40%)" : "none",
+                      }}
                     />
-                    {isOnline && (
+
+                    {/* 🔥 Online dot - hidden if blocked */}
+                    {isOnline && !isBlocked && (
                       <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-dark" />
                     )}
+
+                    {/* 🔥 Blocked indicator - red ban icon */}
+                    {isBlocked && (
+                      <div
+                        className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center"
+                        style={{
+                          backgroundColor: "#ef4444",
+                          border: "2px solid var(--color-bg)",
+                        }}
+                      >
+                        <HiOutlineBan className="text-white text-[10px]" />
+                      </div>
+                    )}
+
+                    {/* Lock indicator */}
                     {chat.isLocked && (
                       <div
                         className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
@@ -584,7 +597,14 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5 gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <p className="text-sm font-semibold text-offwhite truncate">
+                      <p
+                        className="text-sm font-semibold truncate"
+                        style={{
+                          color: isBlocked
+                            ? "var(--color-textMuted)"
+                            : "var(--color-text)",
+                        }}
+                      >
                         {otherUser.fullName}
                       </p>
                       {chat.isMuted && (
@@ -603,7 +623,10 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                           title="Pinned"
                         />
                       )}
-                      <span className="text-[10px] text-gray-soft">
+                      <span
+                        className="text-[10px]"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
                         {formatTime(lastMsg?.createdAt || chat.updatedAt)}
                       </span>
                     </div>
@@ -614,8 +637,16 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                       style={{ color: "var(--color-textMuted)" }}
                     >
                       {chat.iBlockedThem ? (
-                        <span className="italic text-red-400">
-                          🚫 You blocked this user
+                        <span className="italic text-red-400 flex items-center gap-1">
+                          <HiOutlineBan className="text-xs" />
+                          You blocked this user
+                        </span>
+                      ) : chat.theyBlockedMe ? (
+                        <span
+                          className="italic"
+                          style={{ color: "var(--color-textMuted)" }}
+                        >
+                          🔒 Messaging unavailable
                         </span>
                       ) : lastMsg && !lastMsg.deletedForEveryone ? (
                         <>
@@ -634,7 +665,7 @@ const ChatList = ({ chats, loading, activeChatId, onChatSelect }) => {
                         <span className="italic">No messages yet</span>
                       )}
                     </p>
-                    {showUnreadBadge && (
+                    {showUnreadBadge && !isBlocked && (
                       <motion.span
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}

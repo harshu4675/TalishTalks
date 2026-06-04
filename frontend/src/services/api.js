@@ -79,17 +79,25 @@ export const authAPI = {
   logout: () => api.post("/auth/logout"),
 };
 
-// User endpoints
 export const userAPI = {
   search: (query) => api.get(`/users/search?q=${query}`),
   getProfile: (username) => api.get(`/users/profile/${username}`),
   updateProfile: (data) => api.put("/users/profile", data),
-  // 🔥 NEW: Block / Unblock
   block: (userId) => api.post(`/users/block/${userId}`),
   unblock: (userId) => api.post(`/users/unblock/${userId}`),
   getBlocked: () => api.get("/users/blocked"),
+  // 🔥 NEW
+  uploadAvatar: (formData, onProgress) =>
+    api.post("/users/avatar", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: (progressEvent) => {
+        const percent = Math.round(
+          (progressEvent.loaded * 100) / progressEvent.total,
+        );
+        if (onProgress) onProgress(percent);
+      },
+    }),
 };
-
 // Friend endpoints
 export const friendAPI = {
   sendRequest: (data) => api.post("/friends/request", data),

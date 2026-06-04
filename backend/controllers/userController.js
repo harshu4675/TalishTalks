@@ -1,4 +1,6 @@
 const User = require("../models/User");
+const { cloudinary } = require("../utils/cloudinary");
+const multer = require("multer");
 
 // ============================================
 // @desc    Search users by username
@@ -16,15 +18,15 @@ const searchUsers = async (req, res) => {
       });
     }
 
-    // 🔥 Get current user to exclude blocked users from search
+    // Get current user to exclude blocked users from search
     const currentUser = await User.findById(req.user._id);
     const blockedIds = currentUser.blockedUsers || [];
 
     const users = await User.find({
       $and: [
         { _id: { $ne: req.user._id } },
-        { _id: { $nin: blockedIds } }, // exclude users I blocked
-        { blockedUsers: { $ne: req.user._id } }, // exclude users who blocked me
+        { _id: { $nin: blockedIds } },
+        { blockedUsers: { $ne: req.user._id } },
         {
           $or: [
             { username: { $regex: q, $options: "i" } },
@@ -151,7 +153,88 @@ const updateProfile = async (req, res) => {
 };
 
 // ============================================
-// 🔥 NEW: Block a user
+// 🔥 Upload Avatar to Cloudinary
+// @route   POST /api/users/avatar
+// @access  Private
+// ============================================
+const uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No image file provided",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Delete old avatar from Cloudinary if it exists
+    if (user.avatarPublicId) {
+      try {
+        await cloudinary.uploader.destroy(user.avatarPublicId);
+        console.log(`🗑️ Deleted old avatar: ${user.avatarPublicId}`);
+      } catch (err) {
+        console.error("Failed to delete old avatar:", err.message);
+      }
+    }
+
+    // Upload new avatar to Cloudinary from buffer
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "talish_avatars",
+          transformation: [
+            {
+              width: 400,
+              height: 400,
+              crop: "fill",
+              gravity: "face",
+            },
+            {
+              quality: "auto",
+              fetch_format: "auto",
+            },
+          ],
+          resource_type: "image",
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        },
+      );
+      stream.end(req.file.buffer);
+    });
+
+    // Save avatar URL + public_id to user
+    user.avatar = uploadResult.secure_url;
+    user.avatarPublicId = uploadResult.public_id;
+    await user.save();
+
+    console.log(`✅ Avatar uploaded for user: ${user.username}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Avatar uploaded successfully! 📸",
+      avatar: uploadResult.secure_url,
+      avatarPublicId: uploadResult.public_id,
+    });
+  } catch (error) {
+    console.error("Upload avatar error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload avatar",
+    });
+  }
+};
+
+// ============================================
+// 🔥 Block a user
 // @route   POST /api/users/block/:userId
 // @access  Private
 // ============================================
@@ -187,7 +270,7 @@ const blockUser = async (req, res) => {
     // Add to blocked
     currentUser.blockedUsers.push(userId);
 
-    // Remove from friends (both sides) if friends
+    // Remove from friends (both sides)
     currentUser.friends = currentUser.friends.filter(
       (id) => id.toString() !== userId,
     );
@@ -220,7 +303,7 @@ const blockUser = async (req, res) => {
 };
 
 // ============================================
-// 🔥 NEW: Unblock a user
+// 🔥 Unblock a user
 // @route   POST /api/users/unblock/:userId
 // @access  Private
 // ============================================
@@ -264,7 +347,7 @@ const unblockUser = async (req, res) => {
 };
 
 // ============================================
-// 🔥 NEW: Get list of blocked users
+// 🔥 Get list of blocked users
 // @route   GET /api/users/blocked
 // @access  Private
 // ============================================
@@ -293,6 +376,7 @@ module.exports = {
   searchUsers,
   getUserProfile,
   updateProfile,
+  uploadAvatar,
   blockUser,
   unblockUser,
   getBlockedUsers,
