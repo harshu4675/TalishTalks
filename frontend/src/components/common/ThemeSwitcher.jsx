@@ -1,11 +1,87 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HiOutlineColorSwatch, HiCheck } from "react-icons/hi";
-import { useTheme, THEMES } from "../../context/ThemeContext";
+import {
+  useTheme,
+  DARK_THEMES,
+  LIGHT_THEMES,
+} from "../../context/ThemeContext";
 
 const ThemeSwitcher = () => {
-  const { currentTheme, changeTheme } = useTheme();
+  const { currentTheme, changeTheme, isLightMode } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
+
+  const ThemeButton = ({ themeKey, themeData }) => {
+    const isActive = currentTheme === themeKey;
+    return (
+      <button
+        onClick={() => {
+          changeTheme(themeKey);
+          setIsOpen(false);
+        }}
+        className="flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 w-full"
+        style={{
+          backgroundColor: isActive ? "var(--color-bgInput)" : "transparent",
+          border: isActive
+            ? `1px solid ${themeData.primary}`
+            : "1px solid transparent",
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive)
+            e.currentTarget.style.backgroundColor = "var(--color-bgInput)";
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
+        }}
+      >
+        {/* Color preview dots */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <div
+            className="w-7 h-7 rounded-lg shadow-sm"
+            style={{
+              background: `linear-gradient(135deg, ${themeData.primary} 0%, ${themeData.secondary} 100%)`,
+            }}
+          />
+          <div
+            className="w-7 h-7 rounded-lg border"
+            style={{
+              backgroundColor: themeData.bg,
+              borderColor: themeData.border,
+            }}
+          />
+        </div>
+
+        {/* Theme info */}
+        <div className="flex-1 text-left min-w-0">
+          <p
+            className="text-sm font-medium truncate"
+            style={{ color: "var(--color-text)" }}
+          >
+            {themeData.emoji} {themeData.name}
+          </p>
+          <p
+            className="text-[10px] truncate"
+            style={{ color: "var(--color-textMuted)" }}
+          >
+            {themeData.primary}
+          </p>
+        </div>
+
+        {/* Active check */}
+        {isActive && (
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{
+              backgroundColor: themeData.primary,
+              boxShadow: `0 0 8px ${themeData.glow}`,
+            }}
+          >
+            <HiCheck className="text-white text-xs" />
+          </div>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="relative">
@@ -13,9 +89,7 @@ const ThemeSwitcher = () => {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 rounded-lg transition-colors relative group"
-        style={{
-          color: "var(--color-textMuted)",
-        }}
+        style={{ color: "var(--color-textMuted)" }}
         title="Change Theme"
       >
         <HiOutlineColorSwatch className="text-lg group-hover:scale-110 transition-transform" />
@@ -28,7 +102,7 @@ const ThemeSwitcher = () => {
         />
       </button>
 
-      {/* Dropdown Panel */}
+      {/* Dropdown */}
       <AnimatePresence>
         {isOpen && (
           <>
@@ -60,93 +134,57 @@ const ThemeSwitcher = () => {
                   Choose Theme
                 </h3>
                 <p
-                  className="text-xs mt-1"
+                  className="text-xs mt-0.5"
                   style={{ color: "var(--color-textMuted)" }}
                 >
-                  Pick your vibe ✨
+                  {isLightMode ? "☀️ Light mode active" : "🌙 Dark mode active"}
                 </p>
               </div>
 
-              {/* Theme Grid */}
-              <div className="p-3 max-h-96 overflow-y-auto scrollbar-thin">
-                <div className="grid grid-cols-1 gap-2">
-                  {Object.entries(THEMES).map(([key, themeData]) => {
-                    const isActive = currentTheme === key;
-                    return (
-                      <button
+              {/* Scrollable list */}
+              <div className="max-h-[420px] overflow-y-auto scrollbar-thin p-3 space-y-4">
+                {/* 🌑 Dark themes section */}
+                <div>
+                  <p
+                    className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    🌙 Dark Themes
+                  </p>
+                  <div className="space-y-1">
+                    {Object.entries(DARK_THEMES).map(([key, themeData]) => (
+                      <ThemeButton
                         key={key}
-                        onClick={() => {
-                          changeTheme(key);
-                          setIsOpen(false);
-                        }}
-                        className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group"
-                        style={{
-                          backgroundColor: isActive
-                            ? "var(--color-bgInput)"
-                            : "transparent",
-                          border: isActive
-                            ? `1px solid ${themeData.primary}`
-                            : "1px solid transparent",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isActive) {
-                            e.currentTarget.style.backgroundColor =
-                              "var(--color-bgInput)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isActive) {
-                            e.currentTarget.style.backgroundColor =
-                              "transparent";
-                          }
-                        }}
-                      >
-                        {/* Color Preview */}
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <div
-                            className="w-8 h-8 rounded-lg shadow-lg"
-                            style={{
-                              background: `linear-gradient(135deg, ${themeData.primary} 0%, ${themeData.secondary} 100%)`,
-                            }}
-                          />
-                          <div
-                            className="w-8 h-8 rounded-lg"
-                            style={{ backgroundColor: themeData.bg }}
-                          />
-                        </div>
+                        themeKey={key}
+                        themeData={themeData}
+                      />
+                    ))}
+                  </div>
+                </div>
 
-                        {/* Theme Info */}
-                        <div className="flex-1 text-left">
-                          <p
-                            className="text-sm font-medium flex items-center gap-1.5"
-                            style={{ color: "var(--color-text)" }}
-                          >
-                            <span>{themeData.emoji}</span>
-                            {themeData.name}
-                          </p>
-                          <p
-                            className="text-xs"
-                            style={{ color: "var(--color-textMuted)" }}
-                          >
-                            {themeData.primary} • {themeData.bg}
-                          </p>
-                        </div>
+                {/* Divider */}
+                <div
+                  className="border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                />
 
-                        {/* Active Indicator */}
-                        {isActive && (
-                          <div
-                            className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                            style={{
-                              backgroundColor: themeData.primary,
-                              boxShadow: `0 0 10px ${themeData.primary}`,
-                            }}
-                          >
-                            <HiCheck className="text-white text-sm" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+                {/* ☀️ Light themes section */}
+                <div>
+                  <p
+                    className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1"
+                    style={{ color: "var(--color-textMuted)" }}
+                  >
+                    ☀️ Light Themes
+                  </p>
+                  <div className="space-y-1">
+                    {Object.entries(LIGHT_THEMES).map(([key, themeData]) => (
+                      <ThemeButton
+                        key={key}
+                        themeKey={key}
+                        themeData={themeData}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -162,7 +200,10 @@ const ThemeSwitcher = () => {
                   className="text-xs"
                   style={{ color: "var(--color-textMuted)" }}
                 >
-                  💡 Theme syncs across sessions
+                  💡{" "}
+                  {Object.keys(DARK_THEMES).length +
+                    Object.keys(LIGHT_THEMES).length}{" "}
+                  themes available
                 </p>
               </div>
             </motion.div>

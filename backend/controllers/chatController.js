@@ -1,6 +1,9 @@
 const Chat = require("../models/Chat");
 const Message = require("../models/Message");
 const User = require("../models/User");
+const bcrypt = require("bcryptjs");
+
+const MAX_PINNED_CHATS = 3;
 
 // ============================================
 // @desc    Get all chats for current user
@@ -15,15 +18,41 @@ const getChats = async (req, res) => {
       .populate("participants", "fullName username avatar isOnline lastSeen")
       .populate({
         path: "lastMessage",
-        select: "content sender status createdAt deletedForEveryone",
+        select:
+          "content sender status createdAt deletedForEveryone messageType",
       })
       .sort({ updatedAt: -1 });
 
-    // Format chats to add "otherUser" field for convenience
+    // 🔥 Get current user with all flag arrays
+    const currentUser = await User.findById(req.user._id).select(
+      "blockedUsers pinnedChats mutedChats markedUnreadChats lockedChats",
+    );
+
+    const blockedSet = new Set(
+      (currentUser.blockedUsers || []).map((id) => id.toString()),
+    );
+    const pinnedSet = new Set(
+      (currentUser.pinnedChats || []).map((id) => id.toString()),
+    );
+    const mutedSet = new Set(
+      (currentUser.mutedChats || []).map((id) => id.toString()),
+    );
+    const markedUnreadSet = new Set(
+      (currentUser.markedUnreadChats || []).map((id) => id.toString()),
+    );
+    const lockedSet = new Set(
+      (currentUser.lockedChats || []).map((id) => id.toString()),
+    );
+
+    // Format chats and add flags
     const formattedChats = chats.map((chat) => {
       const otherUser = chat.participants.find(
         (p) => p._id.toString() !== req.user._id.toString(),
       );
+
+      const chatIdStr = chat._id.toString();
+      const otherUserIdStr = otherUser?._id.toString();
+
       return {
         _id: chat._id,
         otherUser,
@@ -32,7 +61,20 @@ const getChats = async (req, res) => {
         unreadCount: chat.unreadCount?.get(req.user._id.toString()) || 0,
         updatedAt: chat.updatedAt,
         createdAt: chat.createdAt,
+        // 🔥 NEW FLAGS
+        isPinned: pinnedSet.has(chatIdStr),
+        isMuted: mutedSet.has(chatIdStr),
+        isMarkedUnread: markedUnreadSet.has(chatIdStr),
+        isLocked: lockedSet.has(chatIdStr),
+        isBlocked: otherUserIdStr ? blockedSet.has(otherUserIdStr) : false,
       };
+    });
+
+    // 🔥 Sort: pinned chats first, then by updatedAt
+    formattedChats.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
     return res.status(200).json({
@@ -69,6 +111,22 @@ const createChat = async (req, res) => {
       });
     }
 
+    // 🔥 Block check
+    if (currentUser.blockedUsers.includes(friendId)) {
+      return res.status(403).json({
+        success: false,
+        message: "You have blocked this user. Unblock to chat.",
+      });
+    }
+
+    const otherUser = await User.findById(friendId);
+    if (otherUser && otherUser.blockedUsers.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot chat with this user.",
+      });
+    }
+
     // Check if chat already exists between these users
     let chat = await Chat.findOne({
       participants: { $all: [req.user._id, friendId], $size: 2 },
@@ -88,7 +146,7 @@ const createChat = async (req, res) => {
     }
 
     // Format response
-    const otherUser = chat.participants.find(
+    const otherUserData = chat.participants.find(
       (p) => p._id.toString() !== req.user._id.toString(),
     );
 
@@ -96,12 +154,17 @@ const createChat = async (req, res) => {
       success: true,
       chat: {
         _id: chat._id,
-        otherUser,
+        otherUser: otherUserData,
         lastMessage: chat.lastMessage,
         disappearingMessages: chat.disappearingMessages,
         unreadCount: chat.unreadCount?.get(req.user._id.toString()) || 0,
         createdAt: chat.createdAt,
         updatedAt: chat.updatedAt,
+        isPinned: false,
+        isMuted: false,
+        isMarkedUnread: false,
+        isLocked: false,
+        isBlocked: false,
       },
     });
   } catch (error) {
@@ -137,10 +200,8 @@ const clearChat = async (req, res) => {
       });
     }
 
-    // 🔥 Get all messages in this chat
     const messages = await Message.find({ chat: chatId });
 
-    // 🔥 Delete media from Cloudinary
     const { deleteFromCloudinary } = require("../utils/cloudinary");
     for (const msg of messages) {
       if (msg.media?.publicId) {
@@ -148,21 +209,17 @@ const clearChat = async (req, res) => {
       }
     }
 
-    // 🔥 HARD DELETE all messages from DB
     const result = await Message.deleteMany({ chat: chatId });
     console.log(`🗑️  Chat cleared - deleted ${result.deletedCount} messages`);
 
-    // Reset chat's last message
     chat.lastMessage = null;
 
-    // Reset unread counts for all participants
     chat.participants.forEach((participantId) => {
       chat.unreadCount.set(participantId.toString(), 0);
     });
 
     await chat.save();
 
-    // 🔥 Notify BOTH participants via socket
     const io = req.app.get("io");
     if (io) {
       io.to(chatId).emit("chat_cleared", {
@@ -246,8 +303,10 @@ const setDisappearing = async (req, res) => {
     });
   }
 };
-const bcrypt = require("bcryptjs");
 
+// ============================================
+// CHAT LOCK FEATURES
+// ============================================
 const lockChat = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -273,11 +332,23 @@ const lockChat = async (req, res) => {
         .json({ success: false, message: "Not authorized" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPin = await bcrypt.hash(pin, salt);
+    const user = await User.findById(req.user._id).select("+chatLockPin");
 
-    const user = await User.findById(req.user._id);
-    user.chatLockPin = hashedPin;
+    // If user already has a PIN, verify the provided PIN matches it
+    if (user.chatLockPin) {
+      const isMatch = await bcrypt.compare(pin, user.chatLockPin);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Incorrect PIN. Use your existing chat lock PIN.",
+        });
+      }
+    } else {
+      // First time setting PIN - hash it
+      const salt = await bcrypt.genSalt(10);
+      user.chatLockPin = await bcrypt.hash(pin, salt);
+    }
+
     if (!user.lockedChats.includes(chatId)) {
       user.lockedChats.push(chatId);
     }
@@ -328,11 +399,6 @@ const unlockChat = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Remove lock from chat
-// @route   PUT /api/chats/:chatId/remove-lock
-// @access  Private
-// ============================================
 const removeLock = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -352,7 +418,6 @@ const removeLock = async (req, res) => {
       (id) => id.toString() !== chatId,
     );
 
-    // If no more locked chats, remove the PIN
     if (user.lockedChats.length === 0) {
       user.chatLockPin = "";
     }
@@ -368,11 +433,6 @@ const removeLock = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Get locked chats list
-// @route   GET /api/chats/locked
-// @access  Private
-// ============================================
 const getLockedChats = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -385,6 +445,255 @@ const getLockedChats = async (req, res) => {
   }
 };
 
+// ============================================
+// 🔥 NEW: Toggle pin chat (max 3 pinned)
+// @route   PUT /api/chats/:chatId/pin
+// @access  Private
+// ============================================
+const togglePinChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found",
+      });
+    }
+
+    if (!chat.participants.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    const isPinned = user.pinnedChats.some((id) => id.toString() === chatId);
+
+    if (isPinned) {
+      // Unpin
+      user.pinnedChats = user.pinnedChats.filter(
+        (id) => id.toString() !== chatId,
+      );
+      await user.save();
+      return res.status(200).json({
+        success: true,
+        message: "Chat unpinned",
+        isPinned: false,
+      });
+    } else {
+      // Pin (check max limit)
+      if (user.pinnedChats.length >= MAX_PINNED_CHATS) {
+        return res.status(400).json({
+          success: false,
+          message: `You can only pin up to ${MAX_PINNED_CHATS} chats. Unpin one first.`,
+        });
+      }
+
+      user.pinnedChats.push(chatId);
+      await user.save();
+      return res.status(200).json({
+        success: true,
+        message: "Chat pinned 📌",
+        isPinned: true,
+      });
+    }
+  } catch (error) {
+    console.error("Toggle pin error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// ============================================
+// 🔥 NEW: Toggle mute chat
+// @route   PUT /api/chats/:chatId/mute
+// @access  Private
+// ============================================
+const toggleMuteChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found",
+      });
+    }
+
+    if (!chat.participants.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    const isMuted = user.mutedChats.some((id) => id.toString() === chatId);
+
+    if (isMuted) {
+      user.mutedChats = user.mutedChats.filter(
+        (id) => id.toString() !== chatId,
+      );
+      await user.save();
+      return res.status(200).json({
+        success: true,
+        message: "Chat unmuted 🔔",
+        isMuted: false,
+      });
+    } else {
+      user.mutedChats.push(chatId);
+      await user.save();
+      return res.status(200).json({
+        success: true,
+        message: "Chat muted 🔇",
+        isMuted: true,
+      });
+    }
+  } catch (error) {
+    console.error("Toggle mute error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// ============================================
+// 🔥 NEW: Toggle mark as unread (visual flag only)
+// @route   PUT /api/chats/:chatId/mark-unread
+// @access  Private
+// ============================================
+const toggleMarkUnread = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found",
+      });
+    }
+
+    if (!chat.participants.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    const isMarked = user.markedUnreadChats.some(
+      (id) => id.toString() === chatId,
+    );
+
+    if (isMarked) {
+      user.markedUnreadChats = user.markedUnreadChats.filter(
+        (id) => id.toString() !== chatId,
+      );
+      await user.save();
+      return res.status(200).json({
+        success: true,
+        message: "Marked as read",
+        isMarkedUnread: false,
+      });
+    } else {
+      user.markedUnreadChats.push(chatId);
+      await user.save();
+      return res.status(200).json({
+        success: true,
+        message: "Marked as unread",
+        isMarkedUnread: true,
+      });
+    }
+  } catch (error) {
+    console.error("Toggle mark unread error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// ============================================
+// 🔥 NEW: Delete chat (and all messages) just for this user
+// @route   DELETE /api/chats/:chatId
+// @access  Private
+// ============================================
+const deleteChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found",
+      });
+    }
+
+    if (!chat.participants.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    // Mark as cleared for this user at this moment
+    const existingClear = chat.clearedBy.find(
+      (c) => c.user.toString() === req.user._id.toString(),
+    );
+
+    if (existingClear) {
+      existingClear.clearedAt = new Date();
+    } else {
+      chat.clearedBy.push({
+        user: req.user._id,
+        clearedAt: new Date(),
+      });
+    }
+
+    // Reset unread count + last message visibility for this user
+    chat.unreadCount.set(req.user._id.toString(), 0);
+
+    await chat.save();
+
+    // Also clean up user's pin/mute/mark-unread/locked flags for this chat
+    const user = await User.findById(req.user._id);
+    user.pinnedChats = user.pinnedChats.filter(
+      (id) => id.toString() !== chatId,
+    );
+    user.mutedChats = user.mutedChats.filter((id) => id.toString() !== chatId);
+    user.markedUnreadChats = user.markedUnreadChats.filter(
+      (id) => id.toString() !== chatId,
+    );
+    user.lockedChats = user.lockedChats.filter(
+      (id) => id.toString() !== chatId,
+    );
+    if (user.lockedChats.length === 0) {
+      user.chatLockPin = "";
+    }
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Chat deleted",
+    });
+  } catch (error) {
+    console.error("Delete chat error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 module.exports = {
   getChats,
   createChat,
@@ -394,4 +703,8 @@ module.exports = {
   unlockChat,
   removeLock,
   getLockedChats,
+  togglePinChat,
+  toggleMuteChat,
+  toggleMarkUnread,
+  deleteChat,
 };

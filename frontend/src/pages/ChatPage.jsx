@@ -8,6 +8,7 @@ import {
   HiOutlineBell,
   HiOutlineChatAlt2,
   HiOutlineUsers,
+  HiOutlineShare, // 🔥 NEW
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import ThemeSwitcher from "../components/common/ThemeSwitcher";
@@ -16,7 +17,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useSocket } from "../hooks/useSocket";
 import { useFriends } from "../hooks/useFriends";
 import { useChat } from "../hooks/useChat";
-import { useBackButton } from "../hooks/useBackButton"; // 🔥 NEW
+import { useBackButton } from "../hooks/useBackButton";
 import FriendList from "../components/friends/FriendList";
 import AddFriend from "../components/friends/AddFriend";
 import FriendRequests from "../components/friends/FriendRequests";
@@ -24,6 +25,7 @@ import ChatList from "../components/chat/ChatList";
 import ChatWindow from "../components/chat/ChatWindow";
 import { chatAPI } from "../services/api";
 import ProfileSettings from "../components/profile/ProfileSettings";
+import InviteFriend from "../components/friends/InviteFriend"; // 🔥 NEW
 
 const ChatPage = () => {
   const { user, logout } = useAuth();
@@ -35,17 +37,24 @@ const ChatPage = () => {
     fetchFriends,
     fetchPendingCount,
   } = useFriends();
-  const { chats, fetchChats, loadingChats, activeChat, selectChat, closeChat } =
-    useChat();
+  const {
+    chats,
+    fetchChats,
+    loadingChats,
+    activeChat,
+    selectChat,
+    closeChat,
+    lockAllAgain,
+  } = useChat();
+
   const [showSettings, setShowSettings] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
+  const [showInvite, setShowInvite] = useState(false); // 🔥 NEW
   const [activeTab, setActiveTab] = useState("chats");
   const [searchQuery, setSearchQuery] = useState("");
   const [creatingChat, setCreatingChat] = useState(false);
-
-  // 🔥 NEW: Detect mobile view
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -55,8 +64,17 @@ const ChatPage = () => {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // 🔥 NEW: Back button handling for active chat (mobile only)
-  // When user is in a chat on mobile, back button should close the chat
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        lockAllAgain();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [lockAllAgain]);
+
   useBackButton(!!activeChat && isMobile, () => {
     closeChat();
   });
@@ -112,6 +130,8 @@ const ChatPage = () => {
           <TalishLogo size="sm" />
           <div className="flex items-center gap-1">
             <ThemeSwitcher />
+
+            {/* Friend Requests */}
             <button
               onClick={() => setShowRequests(true)}
               className="relative p-2 rounded-lg hover:bg-dark-100 text-gray-soft hover:text-offwhite transition-colors"
@@ -129,12 +149,22 @@ const ChatPage = () => {
               )}
             </button>
 
+            {/* Add Friend */}
             <button
               onClick={() => setShowAddFriend(true)}
               className="p-2 rounded-lg hover:bg-dark-100 text-gray-soft hover:text-offwhite transition-colors"
               title="Add Friend"
             >
               <HiOutlineUserAdd className="text-lg" />
+            </button>
+
+            {/* 🔥 NEW: Invite Friend */}
+            <button
+              onClick={() => setShowInvite(true)}
+              className="p-2 rounded-lg hover:bg-dark-100 text-gray-soft hover:text-offwhite transition-colors"
+              title="Invite Friend"
+            >
+              <HiOutlineShare className="text-lg" />
             </button>
           </div>
         </div>
@@ -333,7 +363,6 @@ const ChatPage = () => {
         onClose={() => setShowAddFriend(false)}
         onRequestSent={fetchPendingCount}
       />
-
       <FriendRequests
         isOpen={showRequests}
         onClose={() => setShowRequests(false)}
@@ -346,6 +375,9 @@ const ChatPage = () => {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
       />
+
+      {/* 🔥 NEW: Invite Friend Modal */}
+      <InviteFriend isOpen={showInvite} onClose={() => setShowInvite(false)} />
     </div>
   );
 };

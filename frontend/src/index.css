@@ -357,3 +357,80 @@ textarea:focus-visible {
 button:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* ========================================
+   🔥 Phase 11: Light Mode Overrides
+   ======================================== */
+
+/* Smooth theme transitions */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.15s ease;
+}
+
+/* Disable transitions on elements that shouldn't animate */
+img,
+video,
+svg,
+.no-transition {
+  transition: none !important;
+}
+
+/* Fix glass utility for light mode */
+html.light-mode .glass {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+}
+
+html.light-mode .glass-strong {
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border);
+}
+
+/* Fix scrollbar for light mode */
+html.light-mode ::-webkit-scrollbar-track {
+  background: var(--color-bgInput);
+}
+
+html.light-mode ::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+}
+
+html.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* Fix card shadows for light mode - they need lighter shadows */
+html.light-mode .shadow-card-hover {
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.08),
+    0 4px 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+html.light-mode .shadow-card {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.06),
+    0 2px 4px -1px rgba(0, 0, 0, 0.04);
+}
+
+/* Fix glow effects for light mode - more subtle */
+html.light-mode .shadow-glow {
+  box-shadow: 0 0 12px var(--color-glow);
+}
+
+/* Fix skeleton for light mode */
+html.light-mode .skeleton {
+  background-color: var(--color-border);
+}
+
+/* Fix selection for light mode */
+html.light-mode ::selection {
+  background: var(--color-glow);
+  color: var(--color-text);
+}

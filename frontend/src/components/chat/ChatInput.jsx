@@ -88,12 +88,10 @@ const ChatInput = ({
     }
   };
 
-  // 🔥 NEW: Handle file selection
   const handleFileSelect = (e, type) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file
     if (type === "image") {
       if (!file.type.startsWith("image/")) {
         toast.error("Please select an image file");
@@ -117,21 +115,16 @@ const ChatInput = ({
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setShowAttachMenu(false);
-
-    // Reset input so same file can be selected again
     e.target.value = "";
   };
 
-  // 🔥 NEW: Handle send media
   const handleSendMedia = async () => {
     if (!selectedFile || !onSendMedia) return;
-
     await onSendMedia(selectedFile, replyTo);
     setSelectedFile(null);
     setPreviewUrl("");
   };
 
-  // 🔥 NEW: Cancel media preview
   const handleCancelMedia = () => {
     setSelectedFile(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -146,6 +139,41 @@ const ChatInput = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🔥 Phase 7: If blocked, show disabled state instead of full input
+  if (disabled) {
+    return (
+      <div
+        className="border-t backdrop-blur-md"
+        style={{
+          backgroundColor: "var(--color-bgCard)",
+          borderColor: "var(--color-border)",
+        }}
+      >
+        <div className="p-3">
+          <div
+            className="flex items-center justify-center gap-2 rounded-2xl p-3"
+            style={{
+              backgroundColor: "var(--color-bgInput)",
+              border: "1px solid var(--color-border)",
+              opacity: 0.5,
+            }}
+          >
+            <HiOutlinePaperAirplane
+              className="text-lg -rotate-45"
+              style={{ color: "var(--color-textMuted)" }}
+            />
+            <span
+              className="text-sm"
+              style={{ color: "var(--color-textMuted)" }}
+            >
+              Messaging unavailable
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -233,8 +261,9 @@ const ChatInput = ({
             {/* Attach Button */}
             <div className="relative">
               <button
-                onClick={() => setShowAttachMenu(!showAttachMenu)}
-                className="p-2 flex-shrink-0 transition-colors rounded-lg hover:bg-black/20"
+                onClick={() => !disabled && setShowAttachMenu(!showAttachMenu)}
+                disabled={disabled}
+                className="p-2 flex-shrink-0 transition-colors rounded-lg hover:bg-black/20 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ color: "var(--color-textMuted)" }}
                 onMouseDown={(e) => e.preventDefault()}
               >
@@ -248,7 +277,7 @@ const ChatInput = ({
 
               {/* Attach Menu */}
               <AnimatePresence>
-                {showAttachMenu && (
+                {showAttachMenu && !disabled && (
                   <>
                     <div
                       onClick={() => setShowAttachMenu(false)}
@@ -272,7 +301,9 @@ const ChatInput = ({
                       >
                         <div
                           className="w-9 h-9 rounded-lg flex items-center justify-center"
-                          style={{ backgroundColor: "rgba(59, 130, 246, 0.2)" }}
+                          style={{
+                            backgroundColor: "rgba(59, 130, 246, 0.2)",
+                          }}
                         >
                           <HiOutlinePhotograph
                             className="text-lg"
@@ -299,7 +330,9 @@ const ChatInput = ({
                       >
                         <div
                           className="w-9 h-9 rounded-lg flex items-center justify-center"
-                          style={{ backgroundColor: "rgba(239, 68, 68, 0.2)" }}
+                          style={{
+                            backgroundColor: "rgba(239, 68, 68, 0.2)",
+                          }}
                         >
                           <HiOutlineVideoCamera
                             className="text-lg"

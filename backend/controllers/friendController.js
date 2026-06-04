@@ -32,6 +32,29 @@ const sendFriendRequest = async (req, res) => {
     }
 
     const currentUser = await User.findById(req.user._id);
+
+    // 🔥 NEW: Block check - both directions
+    const iBlockedThem = currentUser.blockedUsers?.some(
+      (id) => id.toString() === receiver._id.toString(),
+    );
+    if (iBlockedThem) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You have blocked this user. Unblock them to send a friend request.",
+      });
+    }
+
+    const theyBlockedMe = receiver.blockedUsers?.some(
+      (id) => id.toString() === req.user._id.toString(),
+    );
+    if (theyBlockedMe) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot send a friend request to this user.",
+      });
+    }
+
     if (currentUser.friends.includes(receiver._id)) {
       return res.status(400).json({
         success: false,
@@ -173,7 +196,7 @@ const respondToRequest = async (req, res) => {
 
     const request = await FriendRequest.findById(requestId).populate(
       "sender receiver",
-      "fullName username avatar socketId",
+      "fullName username avatar socketId blockedUsers",
     );
 
     if (!request) {
@@ -195,6 +218,24 @@ const respondToRequest = async (req, res) => {
         success: false,
         message: "This request has already been responded to",
       });
+    }
+
+    // 🔥 NEW: Block check before accepting
+    if (action === "accept") {
+      const iBlockedThem = request.receiver.blockedUsers?.some(
+        (id) => id.toString() === request.sender._id.toString(),
+      );
+      const theyBlockedMe = request.sender.blockedUsers?.some(
+        (id) => id.toString() === request.receiver._id.toString(),
+      );
+
+      if (iBlockedThem || theyBlockedMe) {
+        await FriendRequest.findByIdAndDelete(requestId);
+        return res.status(403).json({
+          success: false,
+          message: "Cannot accept - one of you has blocked the other.",
+        });
+      }
     }
 
     const io = req.app.get("io");

@@ -45,7 +45,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Password is required"],
       minlength: [6, "Password must be at least 6 characters"],
-      select: false, // Don't return password in queries by default
+      select: false,
     },
 
     // Profile picture URL
@@ -66,7 +66,8 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // Push notification subscriptions (multiple devices per user)
+
+    // Push notification subscriptions
     pushSubscriptions: [
       {
         endpoint: String,
@@ -78,6 +79,7 @@ const userSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
+
     // Last seen timestamp
     lastSeen: {
       type: Date,
@@ -98,7 +100,7 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Chat lock PIN (encrypted)
+    // Chat lock PIN (encrypted) - one PIN for all locked chats
     chatLockPin: {
       type: String,
       default: "",
@@ -112,23 +114,52 @@ const userSchema = new mongoose.Schema(
         ref: "Chat",
       },
     ],
+
+    // 🔥 NEW: Blocked users array
+    blockedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    // 🔥 NEW: Pinned chats (max 3, like WhatsApp)
+    pinnedChats: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Chat",
+      },
+    ],
+
+    // 🔥 NEW: Muted chats (no notifications)
+    mutedChats: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Chat",
+      },
+    ],
+
+    // 🔥 NEW: Chats marked as unread by user (visual flag only)
+    markedUnreadChats: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Chat",
+      },
+    ],
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt automatically
+    timestamps: true,
   },
 );
 
-// Hash password before saving to database
+// Hash password before saving
 userSchema.pre("save", async function (next) {
-  // Only hash the password if it has been modified (or is new)
   if (!this.isModified("password")) {
     return next();
   }
 
   try {
-    // Generate salt with 12 rounds
     const salt = await bcrypt.genSalt(12);
-    // Hash the password
     this.password = await bcrypt.hash(this.password, salt);
     next();
   } catch (error) {
@@ -136,19 +167,23 @@ userSchema.pre("save", async function (next) {
   }
 });
 
-// Method to compare entered password with hashed password
+// Method to compare password
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Generate default avatar from username
+// Generate default avatar
 userSchema.pre("save", function (next) {
   if (!this.avatar) {
-    // Use DiceBear API for generating avatars
     this.avatar = `https://api.dicebear.com/7.x/initials/svg?seed=${this.username}&backgroundColor=E8713A&textColor=ffffff`;
   }
   next();
 });
+
+// 🔥 NEW: Helper method to check if a user is blocked
+userSchema.methods.hasBlocked = function (userId) {
+  return this.blockedUsers.some((id) => id.toString() === userId.toString());
+};
 
 const User = mongoose.model("User", userSchema);
 

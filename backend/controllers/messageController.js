@@ -1,7 +1,39 @@
 const Message = require("../models/Message");
 const Chat = require("../models/Chat");
+const User = require("../models/User");
 const { sendPushToUser } = require("../utils/pushService");
 const { deleteFromCloudinary } = require("../utils/cloudinary");
+
+// ============================================
+// 🔥 NEW: Helper - check if either party blocked the other
+// ============================================
+const checkBlockStatus = async (senderId, recipientId) => {
+  const [sender, recipient] = await Promise.all([
+    User.findById(senderId).select("blockedUsers"),
+    User.findById(recipientId).select("blockedUsers mutedChats"),
+  ]);
+
+  if (!sender || !recipient) return { blocked: true, reason: "User not found" };
+
+  const iBlockedThem = sender.blockedUsers.some(
+    (id) => id.toString() === recipientId.toString(),
+  );
+  if (iBlockedThem) {
+    return {
+      blocked: true,
+      reason: "You have blocked this user. Unblock to send messages.",
+    };
+  }
+
+  const theyBlockedMe = recipient.blockedUsers.some(
+    (id) => id.toString() === senderId.toString(),
+  );
+  if (theyBlockedMe) {
+    return { blocked: true, reason: "You cannot send messages to this user." };
+  }
+
+  return { blocked: false, recipient };
+};
 
 // ============================================
 // @desc    Get messages in a chat
@@ -97,6 +129,24 @@ const sendMessage = async (req, res) => {
       });
     }
 
+    const otherParticipantId = chat.participants.find(
+      (p) => p.toString() !== req.user._id.toString(),
+    );
+
+    // 🔥 NEW: Block check
+    if (otherParticipantId) {
+      const blockStatus = await checkBlockStatus(
+        req.user._id,
+        otherParticipantId,
+      );
+      if (blockStatus.blocked) {
+        return res.status(403).json({
+          success: false,
+          message: blockStatus.reason,
+        });
+      }
+    }
+
     let message = await Message.create({
       chat: chatId,
       sender: req.user._id,
@@ -112,10 +162,6 @@ const sendMessage = async (req, res) => {
         select: "content sender messageType media",
         populate: { path: "sender", select: "fullName username" },
       });
-
-    const otherParticipantId = chat.participants.find(
-      (p) => p.toString() !== req.user._id.toString(),
-    );
 
     if (otherParticipantId) {
       const currentUnread =
@@ -143,19 +189,32 @@ const sendMessage = async (req, res) => {
         },
       });
 
-      sendPushToUser(otherParticipantId.toString(), {
-        title: req.user.fullName,
-        body:
-          content.trim().length > 100
-            ? content.trim().substring(0, 100) + "..."
-            : content.trim(),
-        tag: `chat-${chatId}`,
-        data: {
-          type: "message",
-          chatId: chatId.toString(),
-          url: `/chat/${chatId}`,
-        },
-      });
+      // 🔥 NEW: Respect mute - skip push if recipient muted this chat
+      const recipient =
+        await User.findById(otherParticipantId).select("mutedChats");
+      const isMuted = recipient?.mutedChats?.some(
+        (id) => id.toString() === chatId.toString(),
+      );
+
+      if (!isMuted) {
+        sendPushToUser(otherParticipantId.toString(), {
+          title: req.user.fullName,
+          body:
+            content.trim().length > 100
+              ? content.trim().substring(0, 100) + "..."
+              : content.trim(),
+          tag: `chat-${chatId}`,
+          data: {
+            type: "message",
+            chatId: chatId.toString(),
+            url: `/chat/${chatId}`,
+          },
+        });
+      } else {
+        console.log(
+          `🔇 Push skipped (chat muted) for user ${otherParticipantId}`,
+        );
+      }
     }
 
     return res.status(201).json({
@@ -218,13 +277,34 @@ const sendMediaMessage = async (req, res) => {
       });
     }
 
+    const otherParticipantId = chat.participants.find(
+      (p) => p.toString() !== req.user._id.toString(),
+    );
+
+    // 🔥 NEW: Block check (delete uploaded file if blocked)
+    if (otherParticipantId) {
+      const blockStatus = await checkBlockStatus(
+        req.user._id,
+        otherParticipantId,
+      );
+      if (blockStatus.blocked) {
+        const resourceType = req.file.mimetype.startsWith("video/")
+          ? "video"
+          : "image";
+        await deleteFromCloudinary(req.file.filename, resourceType);
+        return res.status(403).json({
+          success: false,
+          message: blockStatus.reason,
+        });
+      }
+    }
+
     const isVideo = req.file.mimetype.startsWith("video/");
     const messageType = isVideo ? "video" : "image";
 
     // Auto-delete after 2 minutes
     const mediaAutoDeleteAt = new Date(Date.now() + 2 * 60 * 1000);
 
-    // Generate video thumbnail URL
     let thumbnail = "";
     if (isVideo && req.file.path) {
       thumbnail = req.file.path.replace(/\.[^/.]+$/, ".jpg");
@@ -258,10 +338,6 @@ const sendMediaMessage = async (req, res) => {
         populate: { path: "sender", select: "fullName username" },
       });
 
-    const otherParticipantId = chat.participants.find(
-      (p) => p.toString() !== req.user._id.toString(),
-    );
-
     if (otherParticipantId) {
       const currentUnread =
         chat.unreadCount?.get(otherParticipantId.toString()) || 0;
@@ -270,7 +346,7 @@ const sendMediaMessage = async (req, res) => {
     chat.lastMessage = message._id;
     await chat.save();
 
-    // 🔥 Schedule auto-delete after 2 minutes
+    // Schedule auto-delete after 2 minutes
     setTimeout(
       async () => {
         try {
@@ -299,7 +375,6 @@ const sendMediaMessage = async (req, res) => {
       2 * 60 * 1000,
     );
 
-    // Emit via socket
     const io = req.app.get("io");
     if (io && otherParticipantId) {
       io.to(otherParticipantId.toString()).emit("new_message", {
@@ -318,16 +393,25 @@ const sendMediaMessage = async (req, res) => {
         },
       });
 
-      sendPushToUser(otherParticipantId.toString(), {
-        title: req.user.fullName,
-        body: isVideo ? "📹 Sent a video" : "📷 Sent a photo",
-        tag: `chat-${chatId}`,
-        data: {
-          type: "message",
-          chatId: chatId.toString(),
-          url: `/chat/${chatId}`,
-        },
-      });
+      // 🔥 NEW: Respect mute
+      const recipient =
+        await User.findById(otherParticipantId).select("mutedChats");
+      const isMuted = recipient?.mutedChats?.some(
+        (id) => id.toString() === chatId.toString(),
+      );
+
+      if (!isMuted) {
+        sendPushToUser(otherParticipantId.toString(), {
+          title: req.user.fullName,
+          body: isVideo ? "📹 Sent a video" : "📷 Sent a photo",
+          tag: `chat-${chatId}`,
+          data: {
+            type: "message",
+            chatId: chatId.toString(),
+            url: `/chat/${chatId}`,
+          },
+        });
+      }
     }
 
     return res.status(201).json({
@@ -454,6 +538,15 @@ const markSeen = async (req, res) => {
       deletedForEveryone: false,
     });
 
+    // 🔥 NEW: Also clear "marked unread" flag when user opens the chat
+    const user = await User.findById(req.user._id);
+    if (user.markedUnreadChats.some((id) => id.toString() === chatId)) {
+      user.markedUnreadChats = user.markedUnreadChats.filter(
+        (id) => id.toString() !== chatId,
+      );
+      await user.save();
+    }
+
     if (messagesToUpdate.length === 0) {
       chat.unreadCount.set(req.user._id.toString(), 0);
       await chat.save();
@@ -477,7 +570,6 @@ const markSeen = async (req, res) => {
     chat.unreadCount.set(req.user._id.toString(), 0);
     await chat.save();
 
-    // Auto-delete based on disappearing mode
     if (
       chat.disappearingMessages?.mode &&
       chat.disappearingMessages.mode !== "off"
@@ -498,19 +590,16 @@ const markSeen = async (req, res) => {
 
         setTimeout(async () => {
           try {
-            // Get messages to delete (including media)
             const messagesToDelete = await Message.find({
               _id: { $in: messageIds },
             });
 
-            // Delete media from Cloudinary
             for (const msg of messagesToDelete) {
               if (msg.media?.publicId) {
                 await deleteFromCloudinary(msg.media.publicId, msg.messageType);
               }
             }
 
-            // Hard delete from DB
             const result = await Message.deleteMany({
               _id: { $in: messageIds },
             });
@@ -582,7 +671,6 @@ const deleteForMe = async (req, res) => {
       await message.save();
     }
 
-    // If both users have deleted it, permanently remove from DB
     const chat = await Chat.findById(message.chat);
     if (chat) {
       const allParticipantsDeleted = chat.participants.every((p) =>
@@ -590,7 +678,6 @@ const deleteForMe = async (req, res) => {
       );
 
       if (allParticipantsDeleted) {
-        // Delete media from Cloudinary if exists
         if (message.media?.publicId) {
           await deleteFromCloudinary(
             message.media.publicId,
@@ -639,12 +726,10 @@ const deleteForEveryone = async (req, res) => {
 
     const chatId = message.chat;
 
-    // Delete media from Cloudinary if exists
     if (message.media?.publicId) {
       await deleteFromCloudinary(message.media.publicId, message.messageType);
     }
 
-    // Hard delete from DB
     await Message.findByIdAndDelete(messageId);
 
     const io = req.app.get("io");
@@ -664,6 +749,131 @@ const deleteForEveryone = async (req, res) => {
     });
   } catch (error) {
     console.error("Delete for everyone error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// ============================================
+// 🔥 NEW: Bulk delete messages (for me)
+// @route   POST /api/messages/bulk-delete-me
+// @access  Private
+// ============================================
+const bulkDeleteForMe = async (req, res) => {
+  try {
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "messageIds array is required",
+      });
+    }
+
+    let deletedCount = 0;
+    for (const messageId of messageIds) {
+      const message = await Message.findById(messageId);
+      if (!message) continue;
+
+      if (!message.deletedFor.includes(req.user._id)) {
+        message.deletedFor.push(req.user._id);
+        await message.save();
+        deletedCount++;
+      }
+
+      // Hard-delete if both users deleted
+      const chat = await Chat.findById(message.chat);
+      if (chat) {
+        const allDeleted = chat.participants.every((p) =>
+          message.deletedFor.some((d) => d.toString() === p.toString()),
+        );
+        if (allDeleted) {
+          if (message.media?.publicId) {
+            await deleteFromCloudinary(
+              message.media.publicId,
+              message.messageType,
+            );
+          }
+          await Message.findByIdAndDelete(messageId);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Deleted ${deletedCount} message(s)`,
+      count: deletedCount,
+    });
+  } catch (error) {
+    console.error("Bulk delete error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// ============================================
+// 🔥 NEW: Bulk delete messages (for everyone)
+// @route   POST /api/messages/bulk-delete-everyone
+// @access  Private
+// ============================================
+const bulkDeleteForEveryone = async (req, res) => {
+  try {
+    const { messageIds } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "messageIds array is required",
+      });
+    }
+
+    let deletedCount = 0;
+    const io = req.app.get("io");
+    const chatBuckets = {};
+
+    for (const messageId of messageIds) {
+      const message = await Message.findById(messageId);
+      if (!message) continue;
+
+      // Only own messages can be deleted for everyone
+      if (message.sender.toString() !== req.user._id.toString()) continue;
+
+      const chatIdStr = message.chat.toString();
+      if (!chatBuckets[chatIdStr]) chatBuckets[chatIdStr] = [];
+      chatBuckets[chatIdStr].push(message._id.toString());
+
+      if (message.media?.publicId) {
+        await deleteFromCloudinary(message.media.publicId, message.messageType);
+      }
+
+      await Message.findByIdAndDelete(messageId);
+      deletedCount++;
+    }
+
+    // Emit one batched event per chat
+    if (io) {
+      for (const [chatId, msgIds] of Object.entries(chatBuckets)) {
+        msgIds.forEach((mId) => {
+          io.to(chatId).emit("message_deleted", {
+            chatId,
+            messageId: mId,
+            hardDeleted: true,
+          });
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Deleted ${deletedCount} message(s) for everyone`,
+      count: deletedCount,
+    });
+  } catch (error) {
+    console.error("Bulk delete everyone error:", error.message);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -734,5 +944,7 @@ module.exports = {
   markSeen,
   deleteForMe,
   deleteForEveryone,
+  bulkDeleteForMe,
+  bulkDeleteForEveryone,
   searchMessages,
 };

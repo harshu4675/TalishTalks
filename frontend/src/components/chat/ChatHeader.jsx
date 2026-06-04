@@ -7,14 +7,17 @@ import {
   HiOutlineClock,
   HiOutlineEye,
   HiOutlineX,
+  HiOutlineBan,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
-import { chatAPI } from "../../services/api";
+import { chatAPI, userAPI } from "../../services/api";
+import { useChat } from "../../hooks/useChat";
 
 const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showDisappearMenu, setShowDisappearMenu] = useState(false);
   const otherUser = chat.otherUser;
+  const { updateChatFlags, fetchChats } = useChat();
 
   const handleClearChat = async () => {
     if (
@@ -44,6 +47,33 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
     }
   };
 
+  // 🔥 NEW: Block / Unblock
+  const handleToggleBlock = async () => {
+    setShowMenu(false);
+    if (!otherUser?._id) return;
+
+    try {
+      if (chat.iBlockedThem) {
+        await userAPI.unblock(otherUser._id);
+        updateChatFlags(chat._id, { iBlockedThem: false });
+        toast.success(`${otherUser.fullName} unblocked`);
+      } else {
+        if (
+          !window.confirm(
+            `Block ${otherUser.fullName}? They won't be able to message you, and they'll be removed from your friends.`,
+          )
+        )
+          return;
+        await userAPI.block(otherUser._id);
+        updateChatFlags(chat._id, { iBlockedThem: true });
+        toast.success(`${otherUser.fullName} blocked 🚫`);
+        fetchChats();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Action failed");
+    }
+  };
+
   const formatLastSeen = (date) => {
     if (!date) return "a long time ago";
     const d = new Date(date);
@@ -69,6 +99,7 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
 
   const disappearingMode = chat.disappearingMessages?.mode || "off";
   const disappearingEnabled = disappearingMode !== "off";
+  const isBlocked = chat.iBlockedThem || chat.theyBlockedMe;
 
   return (
     <div
@@ -93,9 +124,12 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
             src={otherUser.avatar}
             alt={otherUser.fullName}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover"
-            style={{ border: "1px solid var(--color-border)" }}
+            style={{
+              border: "1px solid var(--color-border)",
+              opacity: isBlocked ? 0.6 : 1,
+            }}
           />
-          {isOnline && (
+          {isOnline && !isBlocked && (
             <div
               className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full"
               style={{ border: `2px solid var(--color-bgCard)` }}
@@ -114,7 +148,9 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
             className="text-[11px] truncate leading-tight mt-0.5"
             style={{ color: "var(--color-textMuted)" }}
           >
-            {isTyping ? (
+            {isBlocked ? (
+              <span className="text-red-400">🚫 Blocked</span>
+            ) : isTyping ? (
               <span
                 className="animate-pulse"
                 style={{ color: "var(--color-primary)" }}
@@ -132,7 +168,7 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1 flex-shrink-0">
-        {disappearingEnabled && (
+        {disappearingEnabled && !isBlocked && (
           <div
             className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs"
             style={{
@@ -181,29 +217,31 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                     border: "1px solid var(--color-border)",
                   }}
                 >
-                  <button
-                    onClick={() => setShowDisappearMenu(!showDisappearMenu)}
-                    className="w-full px-4 py-2.5 text-left text-sm flex items-center justify-between gap-2 transition-colors hover:bg-black/20"
-                    style={{ color: "var(--color-text)" }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <HiOutlineClock className="text-base" />
-                      Disappearing
-                    </span>
-                    <span
-                      className="text-xs"
-                      style={{ color: "var(--color-textMuted)" }}
+                  {!isBlocked && (
+                    <button
+                      onClick={() => setShowDisappearMenu(!showDisappearMenu)}
+                      className="w-full px-4 py-2.5 text-left text-sm flex items-center justify-between gap-2 transition-colors hover:bg-black/20"
+                      style={{ color: "var(--color-text)" }}
                     >
-                      {disappearingMode === "off"
-                        ? "Off"
-                        : disappearingMode === "on_seen"
-                          ? "On seen"
-                          : "2 min"}
-                    </span>
-                  </button>
+                      <span className="flex items-center gap-2">
+                        <HiOutlineClock className="text-base" />
+                        Disappearing
+                      </span>
+                      <span
+                        className="text-xs"
+                        style={{ color: "var(--color-textMuted)" }}
+                      >
+                        {disappearingMode === "off"
+                          ? "Off"
+                          : disappearingMode === "on_seen"
+                            ? "On seen"
+                            : "2 min"}
+                      </span>
+                    </button>
+                  )}
 
                   <AnimatePresence>
-                    {showDisappearMenu && (
+                    {showDisappearMenu && !isBlocked && (
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
@@ -256,14 +294,39 @@ const ChatHeader = ({ chat, isOnline, isTyping, onBack, onChatCleared }) => {
                     )}
                   </AnimatePresence>
 
-                  <button
-                    onClick={handleClearChat}
-                    className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors border-t"
-                    style={{ borderColor: "var(--color-border)" }}
-                  >
-                    <HiOutlineTrash className="text-base" />
-                    Clear Chat
-                  </button>
+                  {!isBlocked && (
+                    <button
+                      onClick={handleClearChat}
+                      className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors border-t"
+                      style={{ borderColor: "var(--color-border)" }}
+                    >
+                      <HiOutlineTrash className="text-base" />
+                      Clear Chat
+                    </button>
+                  )}
+
+                  {/* 🔥 NEW: Block / Unblock button */}
+                  {!chat.theyBlockedMe && (
+                    <button
+                      onClick={handleToggleBlock}
+                      className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors border-t ${
+                        chat.iBlockedThem
+                          ? "hover:bg-black/20"
+                          : "text-red-400 hover:bg-red-500/10"
+                      }`}
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: chat.iBlockedThem
+                          ? "var(--color-text)"
+                          : "#f87171",
+                      }}
+                    >
+                      <HiOutlineBan className="text-base" />
+                      {chat.iBlockedThem
+                        ? `Unblock ${otherUser.fullName.split(" ")[0]}`
+                        : `Block ${otherUser.fullName.split(" ")[0]}`}
+                    </button>
+                  )}
                 </motion.div>
               </>
             )}

@@ -84,6 +84,10 @@ export const userAPI = {
   search: (query) => api.get(`/users/search?q=${query}`),
   getProfile: (username) => api.get(`/users/profile/${username}`),
   updateProfile: (data) => api.put("/users/profile", data),
+  // 🔥 NEW: Block / Unblock
+  block: (userId) => api.post(`/users/block/${userId}`),
+  unblock: (userId) => api.post(`/users/unblock/${userId}`),
+  getBlocked: () => api.get("/users/blocked"),
 };
 
 // Friend endpoints
@@ -103,12 +107,23 @@ export const chatAPI = {
   clearChat: (chatId) => api.put(`/chats/${chatId}/clear`),
   setDisappearing: (chatId, data) =>
     api.put(`/chats/${chatId}/disappearing`, data),
+
+  // 🔥 NEW: Chat actions
+  togglePin: (chatId) => api.put(`/chats/${chatId}/pin`),
+  toggleMute: (chatId) => api.put(`/chats/${chatId}/mute`),
+  toggleMarkUnread: (chatId) => api.put(`/chats/${chatId}/mark-unread`),
+  deleteChat: (chatId) => api.delete(`/chats/${chatId}`),
+
+  // 🔥 Chat lock
+  lock: (chatId, pin) => api.put(`/chats/${chatId}/lock`, { pin }),
+  unlock: (chatId, pin) => api.put(`/chats/${chatId}/unlock`, { pin }),
+  removeLock: (chatId, pin) => api.put(`/chats/${chatId}/remove-lock`, { pin }),
+  getLockedChats: () => api.get("/chats/locked"),
 };
 
 export const messageAPI = {
   get: (chatId, params) => api.get(`/messages/${chatId}`, { params }),
   send: (data) => api.post("/messages/send", data),
-  // 🔥 NEW: Send media with progress
   sendMedia: (formData, onProgress) =>
     api.post("/messages/send-media", formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -119,13 +134,17 @@ export const messageAPI = {
         if (onProgress) onProgress(percent);
       },
     }),
-  // 🔥 NEW: Edit message
   edit: (messageId, content) =>
     api.put(`/messages/${messageId}/edit`, { content }),
   markSeen: (chatId) => api.put(`/messages/${chatId}/seen`),
   deleteForMe: (messageId) => api.delete(`/messages/${messageId}/me`),
   deleteForEveryone: (messageId) =>
     api.delete(`/messages/${messageId}/everyone`),
+  // 🔥 NEW: Bulk delete
+  bulkDeleteForMe: (messageIds) =>
+    api.post("/messages/bulk-delete-me", { messageIds }),
+  bulkDeleteForEveryone: (messageIds) =>
+    api.post("/messages/bulk-delete-everyone", { messageIds }),
   search: (params) => api.get("/messages/search", { params }),
 };
 

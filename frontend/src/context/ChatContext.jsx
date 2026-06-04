@@ -24,7 +24,12 @@ export const ChatProvider = ({ children }) => {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [typingUsers, setTypingUsers] = useState({});
 
-  // Fetch all chats
+  // 🔥 NEW: Track which locked chats are unlocked in this session
+  const [unlockedChats, setUnlockedChats] = useState(new Set());
+
+  // 🔥 NEW: Whether the "view locked chats" mode is active
+  const [showLockedSection, setShowLockedSection] = useState(false);
+
   const fetchChats = useCallback(async () => {
     if (!user) return;
     setLoadingChats(true);
@@ -45,6 +50,8 @@ export const ChatProvider = ({ children }) => {
       setChats([]);
       setActiveChat(null);
       setMessages([]);
+      setUnlockedChats(new Set());
+      setShowLockedSection(false);
     }
   }, [user, fetchChats]);
 
@@ -85,29 +92,72 @@ export const ChatProvider = ({ children }) => {
     );
   }, []);
 
-  // Update entire message (for edits)
   const updateMessage = useCallback((messageId, updatedMessage) => {
     setMessages((prev) =>
       prev.map((m) => (m._id === messageId ? updatedMessage : m)),
     );
   }, []);
 
-  // Remove deleted message COMPLETELY
   const markMessageDeleted = useCallback((messageId) => {
     setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
   }, []);
 
-  // Remove auto-disappeared messages COMPLETELY
   const markMessagesAutoDeleted = useCallback((messageIds) => {
     setMessages((prev) => prev.filter((msg) => !messageIds.includes(msg._id)));
   }, []);
 
-  // Remove message (for "delete for me")
   const removeMessage = useCallback((messageId) => {
     setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
   }, []);
 
-  // Update last message in chats list
+  const updateChatFlags = useCallback((chatId, flags) => {
+    setChats((prev) => {
+      const updated = prev.map((c) =>
+        c._id === chatId ? { ...c, ...flags } : c,
+      );
+      if ("isPinned" in flags) {
+        updated.sort((a, b) => {
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          return (
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+        });
+      }
+      return updated;
+    });
+  }, []);
+
+  const removeChatFromList = useCallback(
+    (chatId) => {
+      setChats((prev) => prev.filter((c) => c._id !== chatId));
+      if (activeChat?._id === chatId) {
+        setActiveChat(null);
+        setMessages([]);
+      }
+    },
+    [activeChat],
+  );
+
+  // 🔥 NEW: Lock-related helpers
+  const markChatsUnlocked = useCallback(() => {
+    // Unlock ALL locked chats for this session
+    setUnlockedChats((prev) => {
+      const updated = new Set(prev);
+      chats.filter((c) => c.isLocked).forEach((c) => updated.add(c._id));
+      return updated;
+    });
+  }, [chats]);
+
+  const lockAllAgain = useCallback(() => {
+    setUnlockedChats(new Set());
+    setShowLockedSection(false);
+    if (activeChat && activeChat.isLocked) {
+      setActiveChat(null);
+      setMessages([]);
+    }
+  }, [activeChat]);
+
   const updateLastMessage = useCallback(
     (chatId, message) => {
       setChats((prev) => {
@@ -126,10 +176,13 @@ export const ChatProvider = ({ children }) => {
                 }
               : chat,
           )
-          .sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-          );
+          .sort((a, b) => {
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+            return (
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            );
+          });
       });
     },
     [fetchChats],
@@ -145,11 +198,12 @@ export const ChatProvider = ({ children }) => {
 
   const resetUnread = useCallback((chatId) => {
     setChats((prev) =>
-      prev.map((c) => (c._id === chatId ? { ...c, unreadCount: 0 } : c)),
+      prev.map((c) =>
+        c._id === chatId ? { ...c, unreadCount: 0, isMarkedUnread: false } : c,
+      ),
     );
   }, []);
 
-  // ===== SOCKET LISTENERS =====
   useEffect(() => {
     if (!socket) return;
 
@@ -176,7 +230,7 @@ export const ChatProvider = ({ children }) => {
       updateLastMessage(chatId, message);
     };
 
-    const handleMessageNotification = ({ chatId, message }) => {
+    const handleMessageNotification = ({ chatId }) => {
       if (activeChat?._id !== chatId) {
         incrementUnread(chatId);
       }
@@ -209,36 +263,28 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
-    // Handle message edits in real-time
-    const handleMessageEdited = ({
-      chatId,
-      messageId,
-      message: updatedMessage,
-    }) => {
+    const handleMessageEdited = ({ chatId, messageId, message: updated }) => {
       if (activeChat?._id === chatId) {
         setMessages((prev) =>
-          prev.map((m) => (m._id === messageId ? updatedMessage : m)),
+          prev.map((m) => (m._id === messageId ? updated : m)),
         );
       }
 
       setChats((prev) =>
         prev.map((c) =>
           c._id === chatId && c.lastMessage?._id === messageId
-            ? { ...c, lastMessage: updatedMessage }
+            ? { ...c, lastMessage: updated }
             : c,
         ),
       );
     };
 
-    // 🔥 NEW: Handle chat cleared by other user (both sides)
     const handleChatCleared = ({ chatId, clearedBy, clearedByName }) => {
       const isClearedByMe = clearedBy === user?._id;
 
-      // Clear messages if it's the active chat
       if (activeChat?._id === chatId) {
         setMessages([]);
 
-        // Show notification only if cleared by OTHER user
         if (!isClearedByMe && clearedByName) {
           toast(`🧹 Chat cleared by ${clearedByName}`, {
             duration: 3000,
@@ -247,7 +293,6 @@ export const ChatProvider = ({ children }) => {
         }
       }
 
-      // Update chats list - reset last message and unread count
       setChats((prev) =>
         prev.map((c) =>
           c._id === chatId ? { ...c, lastMessage: null, unreadCount: 0 } : c,
@@ -280,17 +325,21 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
-    // Register all listeners
+    const handleUserBlockedYou = () => fetchChats();
+    const handleUserUnblockedYou = () => fetchChats();
+
     socket.on("new_message", handleNewMessage);
     socket.on("message_notification", handleMessageNotification);
     socket.on("messages_seen", handleMessagesSeen);
     socket.on("message_deleted", handleMessageDeleted);
     socket.on("messages_auto_deleted", handleMessagesAutoDeleted);
     socket.on("message_edited", handleMessageEdited);
-    socket.on("chat_cleared", handleChatCleared); // 🔥 NEW
+    socket.on("chat_cleared", handleChatCleared);
     socket.on("typing_start", handleTypingStart);
     socket.on("typing_stop", handleTypingStop);
     socket.on("disappearing_mode_changed", handleDisappearingChanged);
+    socket.on("user_blocked_you", handleUserBlockedYou);
+    socket.on("user_unblocked_you", handleUserUnblockedYou);
 
     return () => {
       socket.off("new_message", handleNewMessage);
@@ -299,10 +348,12 @@ export const ChatProvider = ({ children }) => {
       socket.off("message_deleted", handleMessageDeleted);
       socket.off("messages_auto_deleted", handleMessagesAutoDeleted);
       socket.off("message_edited", handleMessageEdited);
-      socket.off("chat_cleared", handleChatCleared); // 🔥 NEW
+      socket.off("chat_cleared", handleChatCleared);
       socket.off("typing_start", handleTypingStart);
       socket.off("typing_stop", handleTypingStop);
       socket.off("disappearing_mode_changed", handleDisappearingChanged);
+      socket.off("user_blocked_you", handleUserBlockedYou);
+      socket.off("user_unblocked_you", handleUserUnblockedYou);
     };
   }, [
     socket,
@@ -313,6 +364,7 @@ export const ChatProvider = ({ children }) => {
     incrementUnread,
     markMessageDeleted,
     markMessagesAutoDeleted,
+    fetchChats,
   ]);
 
   const value = {
@@ -338,6 +390,15 @@ export const ChatProvider = ({ children }) => {
     typingUsers,
     resetUnread,
     updateLastMessage,
+    updateChatFlags,
+    removeChatFromList,
+    // 🔥 NEW lock-related
+    unlockedChats,
+    setUnlockedChats,
+    showLockedSection,
+    setShowLockedSection,
+    markChatsUnlocked,
+    lockAllAgain,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

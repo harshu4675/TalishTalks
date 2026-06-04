@@ -23,6 +23,11 @@ const ChatBubble = ({
   onDeleteForEveryone,
   onReply,
   onEdit,
+  // 🔥 Phase 8: Multi-select props
+  isSelectMode,
+  isSelected,
+  onSelect,
+  onEnterSelectMode,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -35,9 +40,11 @@ const ChatBubble = ({
   const isDragging = useRef(false);
   const buttonRef = useRef(null);
 
-  if (message.deletedForEveryone) {
-    return null;
-  }
+  // 🔥 Phase 8: Long-press detection
+  const longPressTimer = useRef(null);
+  const didLongPress = useRef(false);
+
+  if (message.deletedForEveryone) return null;
 
   const hasMedia =
     message.messageType === "image" || message.messageType === "video";
@@ -81,14 +88,44 @@ const ChatBubble = ({
     return <HiCheck className="text-white/60 text-sm" title="Sent" />;
   };
 
-  // Swipe handlers
+  // 🔥 Phase 8: Long-press handlers
+  const handleTouchStartLongPress = (e) => {
+    didLongPress.current = false;
+    longPressTimer.current = setTimeout(() => {
+      didLongPress.current = true;
+      if (!isSelectMode && onEnterSelectMode) {
+        onEnterSelectMode(message._id);
+      }
+    }, 500);
+  };
+
+  const handleTouchEndLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  // 🔥 Phase 8: Tap to select when in select mode
+  const handleBubbleClick = () => {
+    if (isSelectMode && onSelect) {
+      onSelect(message._id);
+    }
+  };
+
+  // Swipe handlers (disabled in select mode)
   const handleTouchStart = (e) => {
+    handleTouchStartLongPress(e);
+    if (isSelectMode) return;
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
     isDragging.current = false;
   };
 
   const handleTouchMove = (e) => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+    if (isSelectMode) return;
     if (!touchStartX.current) return;
     const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;
@@ -108,6 +145,8 @@ const ChatBubble = ({
   };
 
   const handleTouchEnd = () => {
+    handleTouchEndLongPress();
+    if (isSelectMode) return;
     if (isDragging.current && Math.abs(dragX) > 60) {
       if (onReply) onReply(message);
     }
@@ -118,12 +157,14 @@ const ChatBubble = ({
   };
 
   const handleDoubleClick = () => {
+    if (isSelectMode) return;
     if (onReply) onReply(message);
   };
 
   // Menu positioning with portal
   const handleMenuClick = (e) => {
     e.stopPropagation();
+    if (isSelectMode) return;
     if (!showMenu && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       const menuWidth = 200;
@@ -151,7 +192,11 @@ const ChatBubble = ({
     return () => window.removeEventListener("scroll", handleScroll, true);
   }, [showMenu]);
 
-  // Copy text to clipboard
+  // Close menu when entering select mode
+  useEffect(() => {
+    if (isSelectMode) setShowMenu(false);
+  }, [isSelectMode]);
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content);
@@ -162,7 +207,6 @@ const ChatBubble = ({
     setShowMenu(false);
   };
 
-  // Handle edit
   const handleEditClick = () => {
     setShowMenu(false);
     setShowEditModal(true);
@@ -173,11 +217,9 @@ const ChatBubble = ({
     setShowEditModal(false);
   };
 
-  // Media auto-delete countdown (for media messages)
   const [timeLeft, setTimeLeft] = useState(null);
   useEffect(() => {
     if (!hasMedia || !message.mediaAutoDeleteAt) return;
-
     const interval = setInterval(() => {
       const remaining =
         new Date(message.mediaAutoDeleteAt).getTime() - Date.now();
@@ -188,38 +230,41 @@ const ChatBubble = ({
         setTimeLeft(Math.ceil(remaining / 1000));
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, [hasMedia, message.mediaAutoDeleteAt]);
 
   return (
     <div className="flex flex-col relative">
       {/* Swipe reply icon */}
-      <div
-        className={`absolute top-1/2 -translate-y-1/2 transition-opacity ${
-          isOwn ? "right-2" : "left-2"
-        }`}
-        style={{
-          opacity: Math.abs(dragX) / 80,
-          pointerEvents: "none",
-        }}
-      >
+      {!isSelectMode && (
         <div
-          className={`w-9 h-9 rounded-full flex items-center justify-center transition-transform ${
-            showReplyHint ? "scale-110" : "scale-90"
+          className={`absolute top-1/2 -translate-y-1/2 transition-opacity ${
+            isOwn ? "right-2" : "left-2"
           }`}
           style={{
-            backgroundColor: showReplyHint
-              ? "var(--color-primary)"
-              : "var(--color-bgInput)",
+            opacity: Math.abs(dragX) / 80,
+            pointerEvents: "none",
           }}
         >
-          <HiOutlineReply
-            className="text-base"
-            style={{ color: showReplyHint ? "white" : "var(--color-primary)" }}
-          />
+          <div
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-transform ${
+              showReplyHint ? "scale-110" : "scale-90"
+            }`}
+            style={{
+              backgroundColor: showReplyHint
+                ? "var(--color-primary)"
+                : "var(--color-bgInput)",
+            }}
+          >
+            <HiOutlineReply
+              className="text-base"
+              style={{
+                color: showReplyHint ? "white" : "var(--color-primary)",
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -230,12 +275,44 @@ const ChatBubble = ({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onDoubleClick={handleDoubleClick}
+        onClick={handleBubbleClick}
         style={{
           transform: `translateX(${dragX}px)`,
           transition: dragX === 0 ? "transform 0.3s ease-out" : "none",
+          // 🔥 Phase 8: Highlight selected
+          backgroundColor: isSelected
+            ? "rgba(var(--color-primary-rgb, 124, 58, 237), 0.12)"
+            : "transparent",
+          borderRadius: "0.75rem",
+          cursor: isSelectMode ? "pointer" : "default",
         }}
-        className={`flex ${isOwn ? "justify-end" : "justify-start"} group px-1 relative z-10`}
+        className={`flex ${
+          isOwn ? "justify-end" : "justify-start"
+        } group px-1 relative z-10 transition-colors duration-150`}
       >
+        {/* 🔥 Phase 8: Checkbox (left side for own, right side for other) */}
+        {isSelectMode && (
+          <div
+            className={`flex items-center flex-shrink-0 ${
+              isOwn ? "order-last ml-2" : "order-first mr-2"
+            }`}
+          >
+            <div
+              className="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150 flex-shrink-0"
+              style={{
+                borderColor: isSelected
+                  ? "var(--color-primary)"
+                  : "var(--color-border)",
+                backgroundColor: isSelected
+                  ? "var(--color-primary)"
+                  : "transparent",
+              }}
+            >
+              {isSelected && <HiCheck className="text-white text-xs" />}
+            </div>
+          </div>
+        )}
+
         <div
           className={`flex items-end gap-2 max-w-[80%] ${
             isOwn ? "flex-row-reverse" : "flex-row"
@@ -297,12 +374,14 @@ const ChatBubble = ({
                 </div>
               )}
 
-              {/* 🔥 MEDIA DISPLAY (single block - with upload progress) */}
+              {/* Media */}
               {hasMedia && message.media?.url && (
                 <div
                   className="relative cursor-pointer"
                   onClick={() =>
-                    !message.isOptimistic && setShowMediaViewer(true)
+                    !message.isOptimistic &&
+                    !isSelectMode &&
+                    setShowMediaViewer(true)
                   }
                 >
                   {isImage ? (
@@ -328,7 +407,7 @@ const ChatBubble = ({
                     </div>
                   )}
 
-                  {/* Upload Progress Overlay */}
+                  {/* Upload Progress */}
                   {message.isOptimistic && (
                     <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
                       <div className="w-16 h-16 mb-3">
@@ -380,22 +459,13 @@ const ChatBubble = ({
                 </div>
               )}
 
-              {/* Message text + Time */}
-              <div
-                className="px-3 py-2"
-                style={{
-                  paddingRight: "2rem",
-                  paddingTop:
-                    hasMedia && !message.content ? "0.5rem" : "0.5rem",
-                  paddingBottom: "0.5rem",
-                }}
-              >
+              {/* Message text + time */}
+              <div className="px-3 py-2" style={{ paddingRight: "2rem" }}>
                 {message.content && (
                   <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                     {message.content}
                   </p>
                 )}
-
                 <div
                   className="flex items-center gap-1.5 mt-1 text-[10px]"
                   style={{
@@ -411,26 +481,28 @@ const ChatBubble = ({
               </div>
             </div>
 
-            {/* Menu Button */}
-            <button
-              ref={buttonRef}
-              onClick={handleMenuClick}
-              className="absolute top-1.5 right-1.5 p-1 rounded-full transition-all duration-200 z-10"
-              style={{
-                backgroundColor: isOwn
-                  ? "rgba(255,255,255,0.2)"
-                  : "rgba(0,0,0,0.3)",
-                color: isOwn ? "white" : "var(--color-textMuted)",
-              }}
-              title="Options"
-            >
-              <HiOutlineDotsVertical className="text-sm" />
-            </button>
+            {/* Menu Button - hidden in select mode */}
+            {!isSelectMode && (
+              <button
+                ref={buttonRef}
+                onClick={handleMenuClick}
+                className="absolute top-1.5 right-1.5 p-1 rounded-full transition-all duration-200 z-10"
+                style={{
+                  backgroundColor: isOwn
+                    ? "rgba(255,255,255,0.2)"
+                    : "rgba(0,0,0,0.3)",
+                  color: isOwn ? "white" : "var(--color-textMuted)",
+                }}
+                title="Options"
+              >
+                <HiOutlineDotsVertical className="text-sm" />
+              </button>
+            )}
           </div>
         </div>
       </motion.div>
 
-      {/* "Seen" indicator */}
+      {/* Seen indicator */}
       {isOwn && isLastSeen && message.status === "seen" && (
         <motion.div
           initial={{ opacity: 0, y: -5 }}
@@ -455,7 +527,6 @@ const ChatBubble = ({
               onClick={() => setShowMenu(false)}
               className="fixed inset-0 z-[9998]"
             />
-
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: -5 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -486,7 +557,7 @@ const ChatBubble = ({
                 Reply
               </button>
 
-              {/* Copy (only for text messages) */}
+              {/* Copy */}
               {message.content && (
                 <button
                   onClick={handleCopy}
@@ -501,7 +572,7 @@ const ChatBubble = ({
                 </button>
               )}
 
-              {/* Edit (only own text messages) */}
+              {/* Edit */}
               {isOwn && message.messageType === "text" && (
                 <button
                   onClick={handleEditClick}
@@ -516,6 +587,22 @@ const ChatBubble = ({
                 </button>
               )}
 
+              {/* 🔥 Select */}
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  if (onEnterSelectMode) onEnterSelectMode(message._id);
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors hover:bg-black/20 border-b"
+                style={{
+                  color: "var(--color-text)",
+                  borderColor: "var(--color-border)",
+                }}
+              >
+                <HiCheck className="text-base" />
+                Select
+              </button>
+
               {/* Delete for me */}
               <button
                 onClick={() => {
@@ -529,7 +616,7 @@ const ChatBubble = ({
                 Delete for me
               </button>
 
-              {/* Delete for everyone (own messages) */}
+              {/* Delete for everyone */}
               {isOwn && (
                 <button
                   onClick={() => {

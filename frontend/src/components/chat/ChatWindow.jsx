@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
-import { AnimatePresence } from "framer-motion";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
+import { HiOutlineTrash, HiOutlineX, HiCheck } from "react-icons/hi";
 import ChatHeader from "./ChatHeader";
 import ChatInput from "./ChatInput";
 import ChatBubble from "./ChatBubble";
@@ -32,21 +33,126 @@ const ChatWindow = ({ chat, onBack }) => {
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
 
+  // 🔥 Phase 8: Multi-select state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   const otherUser = chat.otherUser;
   const isOnline = isUserOnline(otherUser._id);
   const isTyping = typingUsers[chat._id] === otherUser._id;
 
+  // 🔥 Phase 7: Block state
+  const iBlockedThem = chat.iBlockedThem || false;
+  const theyBlockedMe = chat.theyBlockedMe || false;
+  const isBlocked = iBlockedThem || theyBlockedMe;
+
   useBackButton(!!chat, () => {
+    if (isSelectMode) {
+      exitSelectMode();
+      return;
+    }
     if (onBack) onBack();
   });
+
+  // 🔥 Phase 8: Enter select mode from long-press or menu
+  const handleEnterSelectMode = useCallback((messageId) => {
+    setIsSelectMode(true);
+    setSelectedMessages(new Set([messageId]));
+  }, []);
+
+  // 🔥 Phase 8: Toggle message selection
+  const handleSelectMessage = useCallback((messageId) => {
+    setSelectedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      // Auto-exit if nothing selected
+      if (next.size === 0) {
+        setIsSelectMode(false);
+      }
+      return next;
+    });
+  }, []);
+
+  // 🔥 Phase 8: Exit select mode
+  const exitSelectMode = useCallback(() => {
+    setIsSelectMode(false);
+    setSelectedMessages(new Set());
+  }, []);
+
+  // 🔥 Phase 8: Select all messages
+  const handleSelectAll = useCallback(() => {
+    const visibleIds = messages
+      .filter((m) => !m.deletedForEveryone)
+      .map((m) => m._id);
+    setSelectedMessages(new Set(visibleIds));
+  }, [messages]);
+
+  // 🔥 Phase 8: Bulk delete for me
+  const handleBulkDeleteForMe = async () => {
+    if (selectedMessages.size === 0) return;
+    const ids = Array.from(selectedMessages);
+    setBulkDeleting(true);
+    try {
+      await messageAPI.bulkDeleteForMe(ids);
+      ids.forEach((id) => removeMessage(id));
+      toast.success(
+        `${ids.length} message${ids.length > 1 ? "s" : ""} deleted`,
+      );
+      exitSelectMode();
+    } catch (err) {
+      toast.error("Failed to delete messages");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  // 🔥 Phase 8: Bulk delete for everyone
+  // Only own messages can be deleted for everyone
+  const selectedOwnMessages = Array.from(selectedMessages).filter((id) => {
+    const msg = messages.find((m) => m._id === id);
+    if (!msg) return false;
+    const senderId =
+      typeof msg.sender === "object" ? msg.sender._id : msg.sender;
+    return senderId === user._id;
+  });
+
+  const handleBulkDeleteForEveryone = async () => {
+    if (selectedOwnMessages.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${selectedOwnMessages.length} message${
+          selectedOwnMessages.length > 1 ? "s" : ""
+        } for everyone?`,
+      )
+    )
+      return;
+    setBulkDeleting(true);
+    try {
+      await messageAPI.bulkDeleteForEveryone(selectedOwnMessages);
+      toast.success(
+        `${selectedOwnMessages.length} message${
+          selectedOwnMessages.length > 1 ? "s" : ""
+        } deleted for everyone`,
+      );
+      exitSelectMode();
+    } catch (err) {
+      toast.error("Failed to delete messages");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   useEffect(() => {
     const setVH = () => {
       const vh = window.visualViewport
         ? window.visualViewport.height
         : window.innerHeight;
-
       document.documentElement.style.setProperty("--app-height", `${vh}px`);
-
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({
           behavior: "smooth",
@@ -60,7 +166,6 @@ const ChatWindow = ({ chat, onBack }) => {
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", setVH);
       window.visualViewport.addEventListener("scroll", setVH);
-
       return () => {
         window.visualViewport.removeEventListener("resize", setVH);
         window.visualViewport.removeEventListener("scroll", setVH);
@@ -105,6 +210,12 @@ const ChatWindow = ({ chat, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?._id]);
 
+  // Reset select mode when chat changes
+  useEffect(() => {
+    exitSelectMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat?._id]);
+
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({
@@ -128,7 +239,6 @@ const ChatWindow = ({ chat, onBack }) => {
 
   useEffect(() => {
     if (!socket || !chat?._id) return;
-
     const handleMessageDeleted = (data) => {
       const incomingChatId =
         typeof data.chatId === "object" ? data.chatId.toString() : data.chatId;
@@ -136,7 +246,6 @@ const ChatWindow = ({ chat, onBack }) => {
         removeMessage(data.messageId);
       }
     };
-
     socket.on("message_deleted", handleMessageDeleted);
     return () => socket.off("message_deleted", handleMessageDeleted);
   }, [socket, chat?._id, removeMessage]);
@@ -170,7 +279,6 @@ const ChatWindow = ({ chat, onBack }) => {
         replyTo: replyToData?._id || null,
       });
       const realMessage = res.data.data;
-
       setMessages((prev) => {
         const filtered = prev.filter(
           (m) => m._id !== tempId && m._id !== realMessage._id,
@@ -185,13 +293,12 @@ const ChatWindow = ({ chat, onBack }) => {
       setSending(false);
     }
   };
-  // 🔥 FIXED: Send media in BACKGROUND - doesn't block chat
+
   const handleSendMedia = async (file, replyToData = null) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const isVideo = file.type.startsWith("video/");
     const tempUrl = URL.createObjectURL(file);
 
-    // Show optimistic message immediately
     const optimisticMessage = {
       _id: tempId,
       chat: chat._id,
@@ -203,10 +310,7 @@ const ChatWindow = ({ chat, onBack }) => {
       },
       content: "",
       messageType: isVideo ? "video" : "image",
-      media: {
-        url: tempUrl,
-        type: isVideo ? "video" : "image",
-      },
+      media: { url: tempUrl, type: isVideo ? "video" : "image" },
       status: "sending",
       createdAt: new Date().toISOString(),
       isOptimistic: true,
@@ -216,9 +320,7 @@ const ChatWindow = ({ chat, onBack }) => {
 
     addMessage(optimisticMessage);
     setReplyTo(null);
-    // 🔥 DON'T set sending=true (allow continued typing)
 
-    // 🔥 Upload in background - non-blocking
     (async () => {
       const loadingToast = toast.loading(
         `Uploading ${isVideo ? "video" : "photo"}...`,
@@ -229,24 +331,18 @@ const ChatWindow = ({ chat, onBack }) => {
         const formData = new FormData();
         formData.append("media", file);
         formData.append("chatId", chat._id);
-        if (replyToData?._id) {
-          formData.append("replyTo", replyToData._id);
-        }
+        if (replyToData?._id) formData.append("replyTo", replyToData._id);
 
         const res = await messageAPI.sendMedia(formData, (progress) => {
-          // Update progress on optimistic message
           setMessages((prev) =>
             prev.map((m) =>
               m._id === tempId ? { ...m, uploadProgress: progress } : m,
             ),
           );
-
           toast.loading(`Uploading... ${progress}%`, { id: loadingToast });
         });
 
         const realMessage = res.data.data;
-
-        // Replace optimistic with real message
         setMessages((prev) => {
           const filtered = prev.filter(
             (m) => m._id !== tempId && m._id !== realMessage._id,
@@ -254,7 +350,6 @@ const ChatWindow = ({ chat, onBack }) => {
           return [...filtered, realMessage];
         });
         updateLastMessage(chat._id, realMessage);
-
         URL.revokeObjectURL(tempUrl);
         toast.success(
           `${isVideo ? "Video" : "Photo"} sent! ⏱️ Auto-deletes in 2 min`,
@@ -268,10 +363,8 @@ const ChatWindow = ({ chat, onBack }) => {
         });
       }
     })();
-    // 🔥 Returns immediately - chat continues to work!
   };
 
-  // 🔥 NEW: Edit message
   const handleEdit = async (messageId, newContent) => {
     try {
       await messageAPI.edit(messageId, newContent);
@@ -280,6 +373,7 @@ const ChatWindow = ({ chat, onBack }) => {
       toast.error(err.response?.data?.message || "Failed to edit");
     }
   };
+
   const handleTypingStart = () => emitTypingStart(chat._id, otherUser._id);
   const handleTypingStop = () => emitTypingStop(chat._id, otherUser._id);
 
@@ -309,7 +403,6 @@ const ChatWindow = ({ chat, onBack }) => {
     const groups = [];
     let currentDate = null;
     let currentGroup = null;
-
     msgs.forEach((msg) => {
       const msgDate = new Date(msg.createdAt).toDateString();
       if (msgDate !== currentDate) {
@@ -319,7 +412,6 @@ const ChatWindow = ({ chat, onBack }) => {
       }
       currentGroup.messages.push(msg);
     });
-
     return groups;
   };
 
@@ -340,28 +432,78 @@ const ChatWindow = ({ chat, onBack }) => {
   const messageGroups = groupMessagesByDate(visibleMessages);
 
   return (
-    // 🔥 FIXED: Container uses CSS variable that updates with keyboard
     <div
       ref={containerRef}
       className="flex flex-col w-full overflow-hidden"
       style={{
         backgroundColor: "var(--color-bg)",
-        height: "var(--app-height, 100dvh)", // 🔥 Dynamic height from JS
+        height: "var(--app-height, 100dvh)",
         maxHeight: "var(--app-height, 100dvh)",
       }}
     >
-      {/* 🔥 HEADER - Always visible at top */}
+      {/* 🔥 Phase 8: Select mode top bar OR normal header */}
       <div className="flex-shrink-0 z-30">
-        <ChatHeader
-          chat={chat}
-          isOnline={isOnline}
-          isTyping={isTyping}
-          onBack={onBack}
-          onChatCleared={() => setMessages([])}
-        />
+        <AnimatePresence mode="wait">
+          {isSelectMode ? (
+            <motion.div
+              key="select-bar"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15 }}
+              className="flex items-center justify-between px-4 py-3 border-b"
+              style={{
+                backgroundColor: "var(--color-bgCard)",
+                borderColor: "var(--color-border)",
+              }}
+            >
+              {/* Left: Cancel + count */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={exitSelectMode}
+                  className="p-1.5 rounded-lg transition-colors hover:bg-black/20"
+                  style={{ color: "var(--color-textMuted)" }}
+                >
+                  <HiOutlineX className="text-xl" />
+                </button>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  {selectedMessages.size} selected
+                </span>
+              </div>
+
+              {/* Right: Select all */}
+              <button
+                onClick={handleSelectAll}
+                className="text-xs px-3 py-1.5 rounded-lg transition-colors hover:bg-black/20"
+                style={{ color: "var(--color-primary)" }}
+              >
+                Select all
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="normal-header"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ChatHeader
+                chat={chat}
+                isOnline={isOnline}
+                isTyping={isTyping}
+                onBack={onBack}
+                onChatCleared={() => setMessages([])}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* 🔥 MESSAGES - Flexible scrollable area in middle */}
+      {/* MESSAGES */}
       <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-3 sm:p-4 space-y-2 relative min-h-0"
@@ -372,7 +514,7 @@ const ChatWindow = ({ chat, onBack }) => {
         }}
       >
         <div
-          className="absolute inset-0 pointer-events-none opacity-30"
+          className="absolute inset-0 pointer-events-none"
           style={{
             backgroundImage: `
               radial-gradient(circle at 20% 30%, var(--color-primary) 0%, transparent 8%),
@@ -389,7 +531,9 @@ const ChatWindow = ({ chat, onBack }) => {
               {[1, 2, 3, 4, 5].map((i) => (
                 <div
                   key={i}
-                  className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}
+                  className={`flex ${
+                    i % 2 === 0 ? "justify-end" : "justify-start"
+                  }`}
                 >
                   <div
                     className={`h-10 skeleton ${
@@ -454,6 +598,11 @@ const ChatWindow = ({ chat, onBack }) => {
                           onDeleteForEveryone={handleDeleteForEveryone}
                           onReply={handleReply}
                           onEdit={handleEdit}
+                          // 🔥 Phase 8: Multi-select props
+                          isSelectMode={isSelectMode}
+                          isSelected={selectedMessages.has(message._id)}
+                          onSelect={handleSelectMessage}
+                          onEnterSelectMode={handleEnterSelectMode}
                         />
                       );
                     })}
@@ -462,7 +611,7 @@ const ChatWindow = ({ chat, onBack }) => {
               ))}
 
               <AnimatePresence>
-                {isTyping && (
+                {isTyping && !isSelectMode && (
                   <TypingIndicator name={otherUser.fullName.split(" ")[0]} />
                 )}
               </AnimatePresence>
@@ -473,17 +622,124 @@ const ChatWindow = ({ chat, onBack }) => {
         </div>
       </div>
 
-      {/* 🔥 INPUT - Always visible at bottom */}
+      {/* 🔥 Phase 8: Bottom action bar in select mode OR normal input */}
       <div className="flex-shrink-0 z-30">
-        <ChatInput
-          onSend={handleSend}
-          onSendMedia={handleSendMedia}
-          onTypingStart={handleTypingStart}
-          onTypingStop={handleTypingStop}
-          disabled={false}
-          replyTo={replyTo}
-          onCancelReply={handleCancelReply}
-        />
+        <AnimatePresence mode="wait">
+          {isSelectMode ? (
+            <motion.div
+              key="bulk-actions"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.2 }}
+              className="border-t p-3"
+              style={{
+                backgroundColor: "var(--color-bgCard)",
+                borderColor: "var(--color-border)",
+              }}
+            >
+              {selectedMessages.size === 0 ? (
+                <p
+                  className="text-center text-sm py-1"
+                  style={{ color: "var(--color-textMuted)" }}
+                >
+                  Tap messages to select
+                </p>
+              ) : (
+                <div className="flex items-center gap-3">
+                  {/* Delete for me */}
+                  <button
+                    onClick={handleBulkDeleteForMe}
+                    disabled={bulkDeleting}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+                    style={{
+                      backgroundColor: "var(--color-bgInput)",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
+                  >
+                    {bulkDeleting ? (
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <HiOutlineTrash className="text-base" />
+                    )}
+                    Delete for me
+                  </button>
+
+                  {/* Delete for everyone - only if all selected are own */}
+                  {selectedOwnMessages.length > 0 && (
+                    <button
+                      onClick={handleBulkDeleteForEveryone}
+                      disabled={bulkDeleting}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 text-red-400 hover:bg-red-500/10"
+                      style={{
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                      }}
+                    >
+                      {bulkDeleting ? (
+                        <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <HiOutlineTrash className="text-base" />
+                      )}
+                      Delete for all
+                    </button>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="normal-input"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* Phase 7: Block banners */}
+              {iBlockedThem && (
+                <div
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border-t"
+                  style={{
+                    backgroundColor: "rgba(239, 68, 68, 0.08)",
+                    borderColor: "var(--color-border)",
+                    color: "#f87171",
+                  }}
+                >
+                  <span>🚫</span>
+                  <span>
+                    You blocked{" "}
+                    <strong>{otherUser.fullName.split(" ")[0]}</strong>.
+                    Messages are disabled.
+                  </span>
+                </div>
+              )}
+
+              {theyBlockedMe && (
+                <div
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border-t"
+                  style={{
+                    backgroundColor: "rgba(107, 114, 128, 0.08)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-textMuted)",
+                  }}
+                >
+                  <span>🔒</span>
+                  <span>You can't send messages to this user.</span>
+                </div>
+              )}
+
+              <ChatInput
+                onSend={handleSend}
+                onSendMedia={handleSendMedia}
+                onTypingStart={handleTypingStart}
+                onTypingStop={handleTypingStop}
+                disabled={isBlocked}
+                replyTo={replyTo}
+                onCancelReply={handleCancelReply}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

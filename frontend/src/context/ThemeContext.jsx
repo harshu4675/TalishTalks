@@ -2,11 +2,14 @@ import React, { createContext, useState, useEffect, useContext } from "react";
 
 export const ThemeContext = createContext(null);
 
-// 11 Theme Combinations (Your custom is default)
-export const THEMES = {
+// ============================================
+// 🌑 DARK THEMES (11 existing)
+// ============================================
+export const DARK_THEMES = {
   crimson: {
     name: "Crimson Night",
     emoji: "🔥",
+    mode: "dark",
     primary: "#FB3640",
     primaryDark: "#D62B33",
     primaryLight: "#FD5560",
@@ -23,6 +26,7 @@ export const THEMES = {
   midnight: {
     name: "Midnight Purple",
     emoji: "🌌",
+    mode: "dark",
     primary: "#8B5CF6",
     primaryDark: "#7C3AED",
     primaryLight: "#A78BFA",
@@ -39,6 +43,7 @@ export const THEMES = {
   ocean: {
     name: "Deep Ocean",
     emoji: "🌊",
+    mode: "dark",
     primary: "#06B6D4",
     primaryDark: "#0891B2",
     primaryLight: "#22D3EE",
@@ -55,6 +60,7 @@ export const THEMES = {
   forest: {
     name: "Forest Green",
     emoji: "🌲",
+    mode: "dark",
     primary: "#10B981",
     primaryDark: "#059669",
     primaryLight: "#34D399",
@@ -71,6 +77,7 @@ export const THEMES = {
   sunset: {
     name: "Sunset Glow",
     emoji: "🌅",
+    mode: "dark",
     primary: "#F97316",
     primaryDark: "#EA580C",
     primaryLight: "#FB923C",
@@ -87,6 +94,7 @@ export const THEMES = {
   rose: {
     name: "Rose Garden",
     emoji: "🌹",
+    mode: "dark",
     primary: "#F43F5E",
     primaryDark: "#E11D48",
     primaryLight: "#FB7185",
@@ -103,6 +111,7 @@ export const THEMES = {
   cyber: {
     name: "Cyber Punk",
     emoji: "⚡",
+    mode: "dark",
     primary: "#A3E635",
     primaryDark: "#84CC16",
     primaryLight: "#BEF264",
@@ -119,6 +128,7 @@ export const THEMES = {
   blood: {
     name: "Blood Moon",
     emoji: "🩸",
+    mode: "dark",
     primary: "#DC2626",
     primaryDark: "#B91C1C",
     primaryLight: "#EF4444",
@@ -135,6 +145,7 @@ export const THEMES = {
   arctic: {
     name: "Arctic Frost",
     emoji: "❄️",
+    mode: "dark",
     primary: "#60A5FA",
     primaryDark: "#3B82F6",
     primaryLight: "#93C5FD",
@@ -151,6 +162,7 @@ export const THEMES = {
   gold: {
     name: "Royal Gold",
     emoji: "👑",
+    mode: "dark",
     primary: "#EAB308",
     primaryDark: "#CA8A04",
     primaryLight: "#FACC15",
@@ -167,6 +179,7 @@ export const THEMES = {
   neon: {
     name: "Neon Vibe",
     emoji: "💫",
+    mode: "dark",
     primary: "#D946EF",
     primaryDark: "#C026D3",
     primaryLight: "#E879F9",
@@ -182,29 +195,123 @@ export const THEMES = {
   },
 };
 
+// ============================================
+// 🌕 LIGHT THEMES (4 new)
+// ============================================
+export const LIGHT_THEMES = {
+  light_clean: {
+    name: "Clean White",
+    emoji: "☀️",
+    mode: "light",
+    primary: "#7C3AED",
+    primaryDark: "#6D28D9",
+    primaryLight: "#8B5CF6",
+    secondary: "#EC4899",
+    bg: "#F8F9FA",
+    bgCard: "#FFFFFF",
+    bgInput: "#F1F3F5",
+    border: "#E2E8F0",
+    text: "#1A202C",
+    textMuted: "#64748B",
+    accent: "#7C3AED",
+    glow: "rgba(124, 58, 237, 0.2)",
+  },
+  light_rose: {
+    name: "Rose Light",
+    emoji: "🌸",
+    mode: "light",
+    primary: "#E11D48",
+    primaryDark: "#BE123C",
+    primaryLight: "#F43F5E",
+    secondary: "#EC4899",
+    bg: "#FFF1F3",
+    bgCard: "#FFFFFF",
+    bgInput: "#FFE4E9",
+    border: "#FECDD3",
+    text: "#1A0A10",
+    textMuted: "#9F4455",
+    accent: "#E11D48",
+    glow: "rgba(225, 29, 72, 0.2)",
+  },
+  light_ocean: {
+    name: "Ocean Light",
+    emoji: "🏖️",
+    mode: "light",
+    primary: "#0891B2",
+    primaryDark: "#0E7490",
+    primaryLight: "#06B6D4",
+    secondary: "#3B82F6",
+    bg: "#F0F9FF",
+    bgCard: "#FFFFFF",
+    bgInput: "#E0F2FE",
+    border: "#BAE6FD",
+    text: "#0C1A2A",
+    textMuted: "#4A7A95",
+    accent: "#0891B2",
+    glow: "rgba(8, 145, 178, 0.2)",
+  },
+  light_forest: {
+    name: "Forest Light",
+    emoji: "🍃",
+    mode: "light",
+    primary: "#059669",
+    primaryDark: "#047857",
+    primaryLight: "#10B981",
+    secondary: "#65A30D",
+    bg: "#F0FDF4",
+    bgCard: "#FFFFFF",
+    bgInput: "#DCFCE7",
+    border: "#BBF7D0",
+    text: "#0A1F14",
+    textMuted: "#4A7A5A",
+    accent: "#059669",
+    glow: "rgba(5, 150, 105, 0.2)",
+  },
+};
+
+// ============================================
+// Combined for backward compatibility
+// ============================================
+export const THEMES = { ...DARK_THEMES, ...LIGHT_THEMES };
+
 export const ThemeProvider = ({ children }) => {
-  // Get saved theme or default to 'crimson' (your custom theme)
   const [currentTheme, setCurrentTheme] = useState(() => {
     return localStorage.getItem("talish_theme") || "crimson";
   });
 
   const theme = THEMES[currentTheme] || THEMES.crimson;
+  const isLightMode = theme.mode === "light";
 
-  // Apply theme CSS variables to document
   useEffect(() => {
     const root = document.documentElement;
+
+    // Apply all CSS variables
     Object.entries(theme).forEach(([key, value]) => {
-      if (typeof value === "string" && key !== "name" && key !== "emoji") {
+      if (
+        typeof value === "string" &&
+        key !== "name" &&
+        key !== "emoji" &&
+        key !== "mode"
+      ) {
         root.style.setProperty(`--color-${key}`, value);
       }
     });
+
+    // 🔥 Light/dark mode class on html element
+    if (isLightMode) {
+      root.classList.add("light-mode");
+      root.classList.remove("dark-mode");
+    } else {
+      root.classList.add("dark-mode");
+      root.classList.remove("light-mode");
+    }
 
     // Set body background
     document.body.style.backgroundColor = theme.bg;
 
     // Save to localStorage
     localStorage.setItem("talish_theme", currentTheme);
-  }, [currentTheme, theme]);
+  }, [currentTheme, theme, isLightMode]);
 
   const changeTheme = (themeName) => {
     if (THEMES[themeName]) {
@@ -225,6 +332,9 @@ export const ThemeProvider = ({ children }) => {
         currentTheme,
         theme,
         themes: THEMES,
+        darkThemes: DARK_THEMES,
+        lightThemes: LIGHT_THEMES,
+        isLightMode,
         changeTheme,
         cycleTheme,
       }}
