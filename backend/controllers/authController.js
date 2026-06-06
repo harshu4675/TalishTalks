@@ -23,7 +23,6 @@ const register = async (req, res) => {
       });
     }
 
-    // Check if username is already taken
     const usernameExists = await User.findOne({
       username: username.toLowerCase(),
     });
@@ -34,7 +33,6 @@ const register = async (req, res) => {
       });
     }
 
-    // Create new user (password will be auto-hashed by pre-save hook)
     const user = await User.create({
       fullName: fullName.trim(),
       username: username.toLowerCase().trim(),
@@ -43,18 +41,15 @@ const register = async (req, res) => {
     });
 
     if (user) {
-      // Generate JWT token
       const token = generateToken(user._id);
 
-      // Set httpOnly cookie for added security
       res.cookie("token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      // Return user data (without password)
       return res.status(201).json({
         success: true,
         message: "Account created successfully! Welcome to Talish Talks 🎉",
@@ -85,14 +80,8 @@ const register = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Login user
-// @route   POST /api/auth/login
-// @access  Public
-// ============================================
 const login = async (req, res) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -103,9 +92,7 @@ const login = async (req, res) => {
     }
 
     const { identifier, password } = req.body;
-    // identifier can be email OR username
 
-    // Find user by email or username (need to include password field)
     const user = await User.findOne({
       $or: [
         { email: identifier.toLowerCase() },
@@ -113,7 +100,6 @@ const login = async (req, res) => {
       ],
     }).select("+password");
 
-    // Check if user exists
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -121,7 +107,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Verify password
     const isPasswordCorrect = await user.matchPassword(password);
     if (!isPasswordCorrect) {
       return res.status(401).json({
@@ -130,10 +115,8 @@ const login = async (req, res) => {
       });
     }
 
-    // Generate JWT token
     const token = generateToken(user._id);
 
-    // Set httpOnly cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -141,7 +124,6 @@ const login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // Return success response with user data
     return res.status(200).json({
       success: true,
       message: `Welcome back, ${user.fullName}! 👋`,
