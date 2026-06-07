@@ -149,14 +149,8 @@ const login = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Get current logged-in user
-// @route   GET /api/auth/me
-// @access  Private
-// ============================================
 const getMe = async (req, res) => {
   try {
-    // req.user is set by auth middleware
     const user = await User.findById(req.user._id)
       .select("-password")
       .populate("friends", "fullName username avatar isOnline lastSeen");
@@ -181,14 +175,8 @@ const getMe = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Logout user
-// @route   POST /api/auth/logout
-// @access  Private
-// ============================================
 const logout = async (req, res) => {
   try {
-    // Update user status to offline
     if (req.user) {
       await User.findByIdAndUpdate(req.user._id, {
         isOnline: false,
@@ -197,7 +185,6 @@ const logout = async (req, res) => {
       });
     }
 
-    // Clear the cookie
     res.cookie("token", "", {
       httpOnly: true,
       expires: new Date(0),
@@ -228,7 +215,6 @@ const checkUsername = async (req, res) => {
       });
     }
 
-    // Check format
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       return res.status(400).json({
         success: false,

@@ -12,7 +12,6 @@
   transition: all 0.3s ease-out;
 }
 
-/* Message bubble animation */
 .message-enter {
   opacity: 0;
   transform: translateY(10px) scale(0.95);
@@ -24,7 +23,6 @@
   transition: all 0.2s ease-out;
 }
 
-/* Typing dots animation */
 .typing-dot {
   animation: typingDot 1.4s infinite;
 }

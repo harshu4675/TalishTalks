@@ -5,11 +5,6 @@ const bcrypt = require("bcryptjs");
 
 const MAX_PINNED_CHATS = 3;
 
-// ============================================
-// @desc    Get all chats for current user
-// @route   GET /api/chats
-// @access  Private
-// ============================================
 const getChats = async (req, res) => {
   try {
     const chats = await Chat.find({
@@ -23,7 +18,6 @@ const getChats = async (req, res) => {
       })
       .sort({ updatedAt: -1 });
 
-    // 🔥 Get current user with all flag arrays
     const currentUser = await User.findById(req.user._id).select(
       "blockedUsers pinnedChats mutedChats markedUnreadChats lockedChats",
     );
@@ -44,7 +38,6 @@ const getChats = async (req, res) => {
       (currentUser.lockedChats || []).map((id) => id.toString()),
     );
 
-    // Format chats and add flags
     const formattedChats = chats.map((chat) => {
       const otherUser = chat.participants.find(
         (p) => p._id.toString() !== req.user._id.toString(),
@@ -61,7 +54,7 @@ const getChats = async (req, res) => {
         unreadCount: chat.unreadCount?.get(req.user._id.toString()) || 0,
         updatedAt: chat.updatedAt,
         createdAt: chat.createdAt,
-        // 🔥 NEW FLAGS
+
         isPinned: pinnedSet.has(chatIdStr),
         isMuted: mutedSet.has(chatIdStr),
         isMarkedUnread: markedUnreadSet.has(chatIdStr),
@@ -70,7 +63,6 @@ const getChats = async (req, res) => {
       };
     });
 
-    // 🔥 Sort: pinned chats first, then by updatedAt
     formattedChats.sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
@@ -102,7 +94,6 @@ const createChat = async (req, res) => {
       });
     }
 
-    // Check if friend exists and is actually a friend
     const currentUser = await User.findById(req.user._id);
     if (!currentUser.friends.includes(friendId)) {
       return res.status(403).json({
@@ -111,7 +102,6 @@ const createChat = async (req, res) => {
       });
     }
 
-    // 🔥 Block check
     if (currentUser.blockedUsers.includes(friendId)) {
       return res.status(403).json({
         success: false,
@@ -127,7 +117,6 @@ const createChat = async (req, res) => {
       });
     }
 
-    // Check if chat already exists between these users
     let chat = await Chat.findOne({
       participants: { $all: [req.user._id, friendId], $size: 2 },
     })
@@ -135,7 +124,6 @@ const createChat = async (req, res) => {
       .populate("lastMessage");
 
     if (!chat) {
-      // Create new chat
       chat = await Chat.create({
         participants: [req.user._id, friendId],
       });
@@ -145,7 +133,6 @@ const createChat = async (req, res) => {
         .populate("lastMessage");
     }
 
-    // Format response
     const otherUserData = chat.participants.find(
       (p) => p._id.toString() !== req.user._id.toString(),
     );
@@ -176,11 +163,6 @@ const createChat = async (req, res) => {
   }
 };
 
-// ============================================
-// @desc    Clear all messages in a chat (for EVERYONE)
-// @route   PUT /api/chats/:chatId/clear
-// @access  Private
-// ============================================
 const clearChat = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -304,9 +286,6 @@ const setDisappearing = async (req, res) => {
   }
 };
 
-// ============================================
-// CHAT LOCK FEATURES
-// ============================================
 const lockChat = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -334,7 +313,6 @@ const lockChat = async (req, res) => {
 
     const user = await User.findById(req.user._id).select("+chatLockPin");
 
-    // If user already has a PIN, verify the provided PIN matches it
     if (user.chatLockPin) {
       const isMatch = await bcrypt.compare(pin, user.chatLockPin);
       if (!isMatch) {
@@ -344,7 +322,6 @@ const lockChat = async (req, res) => {
         });
       }
     } else {
-      // First time setting PIN - hash it
       const salt = await bcrypt.genSalt(10);
       user.chatLockPin = await bcrypt.hash(pin, salt);
     }
@@ -445,11 +422,6 @@ const getLockedChats = async (req, res) => {
   }
 };
 
-// ============================================
-// 🔥 NEW: Toggle pin chat (max 3 pinned)
-// @route   PUT /api/chats/:chatId/pin
-// @access  Private
-// ============================================
 const togglePinChat = async (req, res) => {
   try {
     const { chatId } = req.params;
@@ -473,7 +445,6 @@ const togglePinChat = async (req, res) => {
     const isPinned = user.pinnedChats.some((id) => id.toString() === chatId);
 
     if (isPinned) {
-      // Unpin
       user.pinnedChats = user.pinnedChats.filter(
         (id) => id.toString() !== chatId,
       );
@@ -508,12 +479,6 @@ const togglePinChat = async (req, res) => {
     });
   }
 };
-
-// ============================================
-// 🔥 NEW: Toggle mute chat
-// @route   PUT /api/chats/:chatId/mute
-// @access  Private
-// ============================================
 const toggleMuteChat = async (req, res) => {
   try {
     const { chatId } = req.params;
