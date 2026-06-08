@@ -12,7 +12,7 @@ const connectDB = async () => {
   }
 };
 
-// Handle connection events
+//event listners
 mongoose.connection.on("disconnected", () => {
   console.log("⚠️ MongoDB disconnected");
 });

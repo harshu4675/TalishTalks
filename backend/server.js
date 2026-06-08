@@ -17,7 +17,6 @@ const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const initializeSocket = require("./socket/socketHandler");
 const startAutoDeleteWorker = require("./socket/autoDeleteWorker");
 
-// Routes
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const friendRoutes = require("./routes/friendRoutes");
@@ -28,19 +27,16 @@ const pushRoutes = require("./routes/pushRoutes");
 const app = express();
 const server = http.createServer(app);
 
-// Trust proxy
 app.set("trust proxy", 1);
 
-// ---- CORS Configuration ----
 const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000")
   .split(",")
-  .map((url) => url.trim().replace(/\/$/, "")); // Remove trailing slashes
+  .map((url) => url.trim().replace(/\/$/, ""));
 
 console.log("✅ Allowed CORS origins:", allowedOrigins);
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, server-to-server)
     if (!origin) return callback(null, true);
 
     const cleanOrigin = origin.replace(/\/$/, "");
@@ -57,7 +53,6 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// ---- Socket.IO ----
 const io = new Server(server, {
   cors: corsOptions,
   pingTimeout: 60000,
@@ -65,24 +60,19 @@ const io = new Server(server, {
 });
 app.set("io", io);
 
-// ---- SECURITY MIDDLEWARE ----
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
 
-// 🔥 CRITICAL: CORS MUST come BEFORE routes
 app.use(cors(corsOptions));
 
-// Gzip compression
 app.use(compression());
 
-// Sanitize
 app.use(mongoSanitize());
 app.use(xss());
 
-// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -105,33 +95,28 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ---- BODY PARSING ----
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
-// Apply general limiter
 app.use("/api", limiter);
 
-// ---- ROUTES ----
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
-    message: "🚀 Talish Talks API is running!",
+    message: "Talish Talks API is running!",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
   });
 });
 
-// 🔥 ALL ROUTES AFTER CORS + BODY PARSING
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/push", pushRoutes); // 🔥 Moved here, AFTER CORS
+app.use("/api/push", pushRoutes);
 
-// ---- ERROR HANDLING ----
 app.use(notFound);
 app.use(errorHandler);
 
