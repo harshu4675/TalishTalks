@@ -14,11 +14,11 @@ const connectDB = async () => {
 
 //event listners
 mongoose.connection.on("disconnected", () => {
-  console.log("⚠️ MongoDB disconnected");
+  console.log("MongoDB disconnected");
 });
 
 mongoose.connection.on("error", (err) => {
-  console.error(`❌ MongoDB error: ${err}`);
+  console.error(`MongoDB error: ${err}`);
 });
 
 module.exports = connectDB;

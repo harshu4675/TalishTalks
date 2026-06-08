@@ -151,20 +151,11 @@ const startServer = async () => {
     await connectDB();
 
     server.listen(PORT, () => {
-      console.log("");
-      console.log("╔══════════════════════════════════════════╗");
-      console.log("║                                          ║");
-      console.log("║     🗨️  TALISH TALKS SERVER RUNNING      ║");
-      console.log("║                                          ║");
-      console.log(`║     🌐 Port: ${PORT}                         ║`);
-      console.log(
-        `║     📦 Env: ${process.env.NODE_ENV || "development"}              ║`,
-      );
-      console.log("║     🔌 Socket.IO: Active                 ║");
-      console.log("║     🛡️  Security: Enabled                ║");
-      console.log("║                                          ║");
-      console.log("╚══════════════════════════════════════════╝");
-      console.log("");
+      console.log("TALISH TALKS SERVER RUNNING");
+      console.log(`Port: ${PORT}`);
+      console.log(`Env: ${process.env.NODE_ENV || "development"}`);
+      console.log("Socket.IO: Active");
+      console.log("Security: Enabled");
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error.message);
