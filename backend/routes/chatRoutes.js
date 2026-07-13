@@ -27,7 +27,6 @@ router.put("/:chatId/lock", lockChat);
 router.put("/:chatId/unlock", unlockChat);
 router.put("/:chatId/remove-lock", removeLock);
 
-// 🔥 NEW ROUTES
 router.put("/:chatId/pin", togglePinChat);
 router.put("/:chatId/mute", toggleMuteChat);
 router.put("/:chatId/mark-unread", toggleMarkUnread);

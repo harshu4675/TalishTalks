@@ -11,11 +11,6 @@ const { protect } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// ============================================
-// VALIDATION RULES
-// ============================================
-
-// Register validation rules
 const registerValidation = [
   body("fullName")
     .trim()
@@ -60,23 +55,14 @@ const loginValidation = [
   body("password").notEmpty().withMessage("Password is required"),
 ];
 
-// ============================================
-// ROUTES
-// ============================================
-
-// POST /api/auth/register
 router.post("/register", registerValidation, register);
 
-// POST /api/auth/login
 router.post("/login", loginValidation, login);
 
-// GET /api/auth/me - Get current user
 router.get("/me", protect, getMe);
 
-// POST /api/auth/logout
 router.post("/logout", protect, logout);
 
-// GET /api/auth/check-username/:username
 router.get("/check-username/:username", checkUsername);
 
 module.exports = router;
