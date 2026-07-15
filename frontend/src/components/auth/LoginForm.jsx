@@ -63,7 +63,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
     setLoading(false);
 
     if (result.success) {
-      toast.success("Welcome back! 👋");
+      toast.success("Welcome back!");
       navigate("/");
     } else {
       toast.error(result.message || "Login failed");

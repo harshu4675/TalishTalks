@@ -149,7 +149,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
     setLoading(false);
 
     if (result.success) {
-      toast.success("Welcome to Talish Talks! 🎉");
+      toast.success("Welcome to Talish Talks!");
       navigate("/");
     } else {
       toast.error(result.message || "Registration failed");
@@ -190,7 +190,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
             name="fullName"
             value={formData.fullName}
             onChange={handleChange}
-            placeholder="John Doe"
+            placeholder="Enter your name"
             className={`input-dark pl-10 ${
               errors.fullName ? "border-red-500/50" : ""
             }`}
@@ -214,7 +214,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
             name="username"
             value={formData.username}
             onChange={handleChange}
-            placeholder="johndoe"
+            placeholder="Enter your username"
             className={`input-dark pl-10 pr-10 ${
               errors.username
                 ? "border-red-500/50"
