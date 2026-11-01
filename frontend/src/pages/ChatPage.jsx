@@ -1,629 +1,123 @@
-import React, { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
-import {
-  HiOutlineLogout,
-  HiOutlineSearch,
-  HiOutlineUserAdd,
-  HiOutlineCog,
-  HiOutlineBell,
-  HiOutlineChatAlt2,
-  HiOutlineUsers,
-  HiOutlineShare,
-  HiOutlineX,
-} from "react-icons/hi";
+import Avatar from "../components/common/Avatar";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { HiOutlineSearch, HiOutlineUserAdd, HiOutlineCog, HiOutlineBell, HiOutlineChatAlt2, HiOutlineUsers, HiOutlineShare, HiOutlineX, HiOutlineLogout, HiOutlineLockClosed, HiOutlineRefresh } from "react-icons/hi";
 import toast from "react-hot-toast";
-import ThemeSwitcher from "../components/common/ThemeSwitcher";
-import TalishLogo, { TalishLogoText } from "../assets/logo";
+import TalishLogo from "../assets/logo";
 import { useAuth } from "../hooks/useAuth";
 import { useSocket } from "../hooks/useSocket";
 import { useFriends } from "../hooks/useFriends";
 import { useChat } from "../hooks/useChat";
-import { useBackButton } from "../hooks/useBackButton";
 import FriendList from "../components/friends/FriendList";
 import AddFriend from "../components/friends/AddFriend";
 import FriendRequests from "../components/friends/FriendRequests";
 import ChatList from "../components/chat/ChatList";
 import ChatWindow from "../components/chat/ChatWindow";
+import PinModal from "../components/chat/PinModal";
 import { chatAPI } from "../services/api";
+import { errorMessage } from "../utils/messages";
 import ProfileSettings from "../components/profile/ProfileSettings";
 import InviteFriend from "../components/friends/InviteFriend";
 
 const ChatPage = () => {
   const { user, logout } = useAuth();
   const { isConnected } = useSocket();
-  const {
-    friends,
-    loadingFriends,
-    pendingRequestsCount,
-    fetchFriends,
-    fetchPendingCount,
-  } = useFriends();
-  const {
-    chats,
-    fetchChats,
-    loadingChats,
-    activeChat,
-    selectChat,
-    closeChat,
-    lockAllAgain,
-    markChatsUnlocked,
-    unlockedChats,
-  } = useChat();
-
-  const [showSettings, setShowSettings] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [showAddFriend, setShowAddFriend] = useState(false);
-  const [showRequests, setShowRequests] = useState(false);
-  const [showInvite, setShowInvite] = useState(false);
+  const { chatId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [routeError, setRouteError] = useState("");
+  const { friends, loadingFriends, pendingRequestsCount, fetchFriends, fetchPendingCount } = useFriends();
+  const { chats, fetchChats, loadingChats, chatError, activeChat, selectChat, closeChat, lockAllAgain, markChatsUnlocked, unlockedChats } = useChat();
+  const [modal, setModal] = useState(null);
   const [activeTab, setActiveTab] = useState("chats");
   const [searchQuery, setSearchQuery] = useState("");
   const [creatingChat, setCreatingChat] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // 🔥 Hidden locked chats state
   const [revealLocked, setRevealLocked] = useState(false);
-  const pinAttemptRef = useRef(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const routeRequest = useRef(null);
+  const lockedCount = chats.filter((chat) => chat.isLocked).length;
+  const openChat = (chat) => { selectChat(chat); navigate(`/chat/${chat._id}`, { state: { fromList: true } }); };
+  const backToList = () => { closeChat(); if (location.state?.fromList && window.history.state?.idx > 0) navigate(-1); else navigate("/", { replace: true }); };
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        lockAllAgain();
-        setRevealLocked(false);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    const onVisibility = () => { if (document.hidden) { lockAllAgain(); setRevealLocked(false); } };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [lockAllAgain]);
-
-  useBackButton(!!activeChat && isMobile, () => {
-    closeChat();
-  });
-
-  // 🔥 PIN-in-search detection (FIXED)
   useEffect(() => {
-    if (pinAttemptRef.current) {
-      clearTimeout(pinAttemptRef.current);
-    }
-
-    const trimmed = searchQuery.trim();
-
-    if (!trimmed) {
-      if (revealLocked) {
-        setRevealLocked(false);
-        lockAllAgain();
+    if (!chatId || loadingChats) return;
+    const chat = chats.find((item) => item._id === chatId);
+    if (chat) {
+      if (chat.isLocked && !unlockedChats.has(chatId)) { closeChat(); navigate("/", { replace: true }); toast("Unlock this conversation from the chat list."); }
+      else selectChat(chat);
+    } else if (!chatError) {
+      // A new conversation can arrive after the list request; refresh once for deep links.
+      if (routeRequest.current !== chatId) {
+        routeRequest.current = chatId;
+        void fetchChats().then((loaded) => {
+          if (routeRequest.current === chatId && Array.isArray(loaded) && !loaded.some((item) => item._id === chatId)) setRouteError("This conversation is unavailable or was removed from your list.");
+        });
       }
-      return;
     }
+  }, [chatId, chats, loadingChats, chatError, unlockedChats, selectChat, closeChat, navigate, fetchChats]);
+  useEffect(() => { if (!chatId && activeChat) closeChat(); }, [chatId, activeChat, closeChat]);
+  useEffect(() => { if (!chatId) { routeRequest.current = null; setRouteError(""); } }, [chatId]);
 
-    const isPin = /^\d{4}$/.test(trimmed);
-    if (!isPin) {
-      if (revealLocked) {
-        setRevealLocked(false);
-        lockAllAgain();
-      }
-      return;
-    }
-
-    const lockedChats = chats.filter((c) => c.isLocked);
-    if (lockedChats.length === 0) return;
-
-    pinAttemptRef.current = setTimeout(async () => {
-      try {
-        await chatAPI.unlock(lockedChats[0]._id, trimmed);
-        // 🔥 FIX: Clear search FIRST so filter doesn't filter by PIN text
-        setSearchQuery("");
-        // Then reveal (next tick)
-        setTimeout(() => {
-          markChatsUnlocked();
-          setRevealLocked(true);
-          toast.success("Locked chats revealed 🔓", { duration: 1500 });
-        }, 50);
-      } catch (err) {
-        // Silent fail — wrong PIN
-      }
-    }, 400);
-
-    return () => {
-      if (pinAttemptRef.current) clearTimeout(pinAttemptRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, chats]);
-
-  // Hide locked chats when switching tabs
-  useEffect(() => {
-    if (revealLocked && activeTab !== "chats") {
-      setRevealLocked(false);
-      lockAllAgain();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    await logout();
-    toast.success("Logged out successfully 👋");
-  };
-
+  const handleLogout = async () => { setLoggingOut(true); await logout(); setLoggingOut(false); toast.success("Logged out"); };
   const handleFriendClick = async (friend) => {
+    if (creatingChat) return;
     setCreatingChat(true);
     try {
-      const res = await chatAPI.create({ friendId: friend._id });
-      const chat = res.data.chat;
-      await fetchChats();
-      selectChat(chat);
-      setActiveTab("chats");
-    } catch (err) {
-      toast.error("Failed to open chat");
-    } finally {
-      setCreatingChat(false);
-    }
+      const response = await chatAPI.create({ friendId: friend._id });
+      await fetchChats(); setActiveTab("chats"); openChat(response.data.chat);
+    } catch (error) { toast.error(errorMessage(error, "Failed to open chat")); }
+    finally { setCreatingChat(false); }
   };
+  const reveal = async (pin) => {
+    const chat = chats.find((item) => item.isLocked);
+    if (!chat) return;
+    try { await chatAPI.unlock(chat._id, pin); markChatsUnlocked(); setRevealLocked(true); setSearchQuery(""); setModal(null); }
+    catch (error) { toast.error(errorMessage(error, "Incorrect PIN")); }
+  };
+  const hideLocked = () => { setRevealLocked(false); lockAllAgain(); };
+  const filteredChats = useMemo(() => chats.filter((chat) => (revealLocked || !chat.isLocked) && `${chat.otherUser?.fullName} ${chat.otherUser?.username}`.toLowerCase().includes(searchQuery.toLowerCase())), [chats, searchQuery, revealLocked]);
+  const lockedFriendIds = new Set(chats.filter((chat) => chat.isLocked && !revealLocked).map((chat) => chat.otherUser?._id));
+  const filteredFriends = friends.filter((friend) => !lockedFriendIds.has(friend._id) && `${friend.fullName} ${friend.username}`.toLowerCase().includes(searchQuery.toLowerCase()));
+  const unread = chats.filter((chat) => !chat.isLocked || revealLocked).reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
 
-  // 🔥 Filter chats — hide locked unless revealed
-  const filteredChats = chats
-    .filter((c) => {
-      if (c.isLocked && !revealLocked) return false;
-      return true;
-    })
-    .filter(
-      (c) =>
-        c.otherUser?.fullName
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        c.otherUser?.username
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()),
-    );
-
-  // 🔥 NEW: Build set of friend IDs whose chats are locked
-  const lockedFriendIds = new Set(
-    chats
-      .filter((c) => c.isLocked && !revealLocked)
-      .map((c) => c.otherUser?._id)
-      .filter(Boolean),
-  );
-
-  // 🔥 Filter friends - hide friends whose chat is locked
-  const filteredFriends = friends
-    .filter((friend) => !lockedFriendIds.has(friend._id))
-    .filter(
-      (friend) =>
-        friend.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        friend.username.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-
-  // Count locked chats for hint
-  const lockedCount = chats.filter((c) => c.isLocked).length;
-
-  return (
-    <div
-      className="h-screen flex overflow-hidden"
-      style={{ backgroundColor: "var(--color-bg)" }}
-    >
-      {/* Sidebar */}
-      <motion.div
-        initial={{ x: -300, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className={`${
-          activeChat ? "hidden lg:flex" : "flex"
-        } w-full lg:w-96 flex-col`}
-        style={{
-          backgroundColor: "var(--color-bg)",
-          borderRight: "1px solid var(--color-border)",
-        }}
-      >
-        {/* Sidebar Header */}
-        <div
-          className="p-4 flex items-center justify-between flex-shrink-0"
-          style={{ borderBottom: "1px solid var(--color-border)" }}
-        >
-          <TalishLogo size="sm" />
-          <div className="flex items-center gap-1">
-            <ThemeSwitcher />
-
-            <button
-              onClick={() => setShowRequests(true)}
-              className="relative p-2 rounded-lg transition-colors hover:bg-black/10"
-              style={{ color: "var(--color-textMuted)" }}
-              title="Friend Requests"
-            >
-              <HiOutlineBell className="text-lg" />
-              {pendingRequestsCount > 0 && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute -top-0.5 -right-0.5 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 glow-pulse"
-                  style={{ backgroundColor: "var(--color-primary)" }}
-                >
-                  {pendingRequestsCount > 9 ? "9+" : pendingRequestsCount}
-                </motion.span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setShowAddFriend(true)}
-              className="p-2 rounded-lg transition-colors hover:bg-black/10"
-              style={{ color: "var(--color-textMuted)" }}
-              title="Add Friend"
-            >
-              <HiOutlineUserAdd className="text-lg" />
-            </button>
-
-            <button
-              onClick={() => setShowInvite(true)}
-              className="p-2 rounded-lg transition-colors hover:bg-black/10"
-              style={{ color: "var(--color-textMuted)" }}
-              title="Invite Friend"
-            >
-              <HiOutlineShare className="text-lg" />
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div
-          className="flex px-3 pt-2 gap-1 flex-shrink-0"
-          style={{ backgroundColor: "var(--color-bgCard)" }}
-        >
-          <button
-            onClick={() => setActiveTab("chats")}
-            className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
-            style={{
-              backgroundColor:
-                activeTab === "chats" ? "var(--color-bgInput)" : "transparent",
-              color:
-                activeTab === "chats"
-                  ? "var(--color-text)"
-                  : "var(--color-textMuted)",
-              borderBottom:
-                activeTab === "chats"
-                  ? "2px solid var(--color-primary)"
-                  : "2px solid transparent",
-            }}
-          >
-            <HiOutlineChatAlt2 className="text-base" />
-            Chats
-            {chats
-              .filter((c) => !c.isLocked)
-              .reduce((sum, c) => sum + (c.unreadCount || 0), 0) > 0 && (
-              <span
-                className="text-white text-[10px] rounded-full px-1.5 py-0.5 min-w-[18px]"
-                style={{ backgroundColor: "var(--color-primary)" }}
-              >
-                {chats
-                  .filter((c) => !c.isLocked)
-                  .reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("friends")}
-            className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
-            style={{
-              backgroundColor:
-                activeTab === "friends"
-                  ? "var(--color-bgInput)"
-                  : "transparent",
-              color:
-                activeTab === "friends"
-                  ? "var(--color-text)"
-                  : "var(--color-textMuted)",
-              borderBottom:
-                activeTab === "friends"
-                  ? "2px solid var(--color-primary)"
-                  : "2px solid transparent",
-            }}
-          >
-            <HiOutlineUsers className="text-base" />
-            Friends
-            {filteredFriends.length > 0 && (
-              <span
-                className="text-[10px]"
-                style={{ color: "var(--color-textMuted)" }}
-              >
-                ({filteredFriends.length})
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Search Bar */}
-        <div
-          className="p-3 flex-shrink-0"
-          style={{ borderBottom: "1px solid var(--color-border)" }}
-        >
-          <div className="relative">
-            <HiOutlineSearch
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-base"
-              style={{ color: "var(--color-textMuted)" }}
-            />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                revealLocked
-                  ? "🔓 Locked chats visible..."
-                  : lockedCount > 0 && activeTab === "chats"
-                    ? "Search or enter PIN..."
-                    : `Search ${activeTab}...`
-              }
-              className="w-full rounded-xl pl-9 pr-9 py-2 text-sm transition-all focus:outline-none"
-              style={{
-                backgroundColor: "var(--color-bgInput)",
-                border: revealLocked
-                  ? "1px solid var(--color-primary)"
-                  : "1px solid var(--color-border)",
-                color: "var(--color-text)",
-              }}
-            />
-            {revealLocked && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0 }}
-                animate={{ opacity: 1, scale: 1 }}
-                onClick={() => {
-                  setSearchQuery("");
-                  setRevealLocked(false);
-                  lockAllAgain();
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors hover:bg-black/10"
-                title="Hide locked chats"
-              >
-                <HiOutlineX
-                  className="text-sm"
-                  style={{ color: "var(--color-primary)" }}
-                />
-              </motion.button>
-            )}
-          </div>
-
-          {/* 🔒 Hint for locked chats */}
-          {activeTab === "chats" &&
-            lockedCount > 0 &&
-            !revealLocked &&
-            !searchQuery && (
-              <motion.p
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-[10px] mt-1.5 px-1 flex items-center gap-1"
-                style={{ color: "var(--color-textMuted)" }}
-              >
-                <span>🔒</span>
-                <span>
-                  {lockedCount} locked chat
-                  {lockedCount > 1 ? "s" : ""}. Type your PIN to reveal.
-                </span>
-              </motion.p>
-            )}
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
-          {activeTab === "chats" ? (
-            <ChatList
-              chats={filteredChats}
-              loading={loadingChats}
-              activeChatId={activeChat?._id}
-              onChatSelect={selectChat}
-            />
-          ) : (
-            <FriendList
-              friends={filteredFriends}
-              loading={loadingFriends}
-              activeFriendId={activeChat?.otherUser?._id}
-              onFriendSelect={handleFriendClick}
-              onFriendRemoved={() => {
-                fetchFriends();
-                fetchChats();
-              }}
-            />
-          )}
-        </div>
-
-        {/* User Profile Area */}
-        <div
-          className="p-3 flex-shrink-0"
-          style={{ borderTop: "1px solid var(--color-border)" }}
-        >
-          <div className="flex items-center gap-3 p-2 rounded-xl transition-colors group hover:bg-black/5">
-            <div className="relative">
-              <img
-                src={user?.avatar}
-                alt={user?.fullName}
-                className="w-11 h-11 rounded-full object-cover"
-                style={{ border: "2px solid var(--color-primary)" }}
-              />
-              <div
-                className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full"
-                style={{
-                  backgroundColor: isConnected
-                    ? "#22c55e"
-                    : "var(--color-textMuted)",
-                  border: "2px solid var(--color-bg)",
-                }}
-              />
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <p
-                className="text-sm font-semibold truncate"
-                style={{ color: "var(--color-text)" }}
-              >
-                {user?.fullName}
-              </p>
-              <p
-                className="text-xs truncate"
-                style={{ color: "var(--color-textMuted)" }}
-              >
-                @{user?.username}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <button
-                className="p-2 rounded-lg transition-colors hover:bg-black/10"
-                style={{ color: "var(--color-textMuted)" }}
-                onClick={() => setShowSettings(true)}
-                title="Settings"
-              >
-                <HiOutlineCog className="text-lg" />
-              </button>
-              <button
-                onClick={handleLogout}
-                disabled={loggingOut}
-                className="p-2 rounded-lg hover:bg-red-500/10 transition-colors"
-                style={{ color: "var(--color-textMuted)" }}
-                title="Logout"
-              >
-                {loggingOut ? (
-                  <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <HiOutlineLogout className="text-lg" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Main Chat Area */}
-      <div
-        className={`${
-          activeChat ? "flex" : "hidden lg:flex"
-        } flex-1 flex-col relative overflow-hidden`}
-        style={{ backgroundColor: "var(--color-bg)" }}
-      >
-        {activeChat ? (
-          <ChatWindow chat={activeChat} onBack={closeChat} />
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="flex-1 flex flex-col items-center justify-center relative overflow-hidden"
-          >
-            <div
-              className="absolute top-1/4 right-1/4 w-96 h-96 rounded-full blur-3xl"
-              style={{ backgroundColor: "var(--color-glow)", opacity: 0.3 }}
-            />
-
-            <div className="text-center space-y-6 z-10 px-4">
-              <div className="animate-float">
-                <TalishLogo size="xl" />
-              </div>
-
-              <div className="space-y-2">
-                <h2
-                  className="text-2xl sm:text-3xl font-display font-bold"
-                  style={{ color: "var(--color-text)" }}
-                >
-                  Welcome to <TalishLogoText />
-                </h2>
-                <p
-                  className="max-w-sm mx-auto"
-                  style={{ color: "var(--color-textMuted)" }}
-                >
-                  Select a chat from the sidebar or click on a friend to start a
-                  new conversation 💬
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-center gap-3 mt-8 max-w-md mx-auto">
-                <div
-                  className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
-                  style={{
-                    color: "var(--color-textMuted)",
-                    backgroundColor: "var(--color-bgCard)",
-                    border: "1px solid var(--color-border)",
-                  }}
-                >
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  {isConnected ? "Connected" : "Connecting..."}
-                </div>
-                <div
-                  className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
-                  style={{
-                    color: "var(--color-textMuted)",
-                    backgroundColor: "var(--color-bgCard)",
-                    border: "1px solid var(--color-border)",
-                  }}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "var(--color-primary)" }}
-                  />
-                  {chats.filter((c) => !c.isLocked).length} Chats
-                </div>
-                <div
-                  className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
-                  style={{
-                    color: "var(--color-textMuted)",
-                    backgroundColor: "var(--color-bgCard)",
-                    border: "1px solid var(--color-border)",
-                  }}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "var(--color-secondary)" }}
-                  />
-                  {filteredFriends.length} Friends
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {creatingChat && (
-          <div
-            className="absolute inset-0 backdrop-blur-sm flex items-center justify-center z-50"
-            style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-          >
-            <div className="flex flex-col items-center gap-3">
-              <div
-                className="w-10 h-10 border-[3px] border-t-transparent rounded-full animate-spin"
-                style={{ borderColor: "var(--color-primary)" }}
-              />
-              <p
-                className="text-sm"
-                style={{ color: "var(--color-textMuted)" }}
-              >
-                Opening chat...
-              </p>
-            </div>
-          </div>
-        )}
+  return <div className="messenger-shell">
+    <aside className={`sidebar ${activeChat ? "has-active-chat" : ""}`}>
+      <header className="sidebar-brand"><TalishLogo size="sm" /><div className="flex gap-1">
+        <button className="icon-button" onClick={() => setModal("requests")} aria-label={`Friend requests${pendingRequestsCount ? `, ${pendingRequestsCount} pending` : ""}`}><HiOutlineBell />{pendingRequestsCount > 0 && <span className="notification-dot">{pendingRequestsCount > 9 ? "9+" : pendingRequestsCount}</span>}</button>
+        <button className="icon-button" onClick={() => setModal("add")} aria-label="Add friend"><HiOutlineUserAdd /></button>
+        <button className="icon-button" onClick={() => setModal("invite")} aria-label="Invite a friend"><HiOutlineShare /></button>
+      </div></header>
+      <div className="sidebar-title"><h1>{activeTab === "chats" ? "Chats" : "Friends"}</h1><span className={`connection-label ${isConnected ? "online" : ""}`}><i />{isConnected ? "Connected" : "Reconnecting…"}</span></div>
+      <nav className="sidebar-tabs" aria-label="Conversation views">
+        <button className={activeTab === "chats" ? "active" : ""} onClick={() => setActiveTab("chats")}><HiOutlineChatAlt2 /> Chats {unread > 0 && <span className="count-badge">{unread}</span>}</button>
+        <button className={activeTab === "friends" ? "active" : ""} onClick={() => { setActiveTab("friends"); hideLocked(); }}><HiOutlineUsers /> Friends</button>
+      </nav>
+      <div className="sidebar-search"><div className="search-field"><HiOutlineSearch /><input aria-label={`Search ${activeTab}`} placeholder={`Search ${activeTab}`} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />{searchQuery && <button className="icon-button small" onClick={() => setSearchQuery("")} aria-label="Clear search"><HiOutlineX /></button>}</div>
+        {lockedCount > 0 && <button className="locked-chats-button" onClick={() => revealLocked ? hideLocked() : setModal("unlock")}><HiOutlineLockClosed />{revealLocked ? "Hide locked chats" : `Locked chats (${lockedCount})`}</button>}
       </div>
-
-      {/* Modals */}
-      <AddFriend
-        isOpen={showAddFriend}
-        onClose={() => setShowAddFriend(false)}
-        onRequestSent={fetchPendingCount}
-      />
-      <FriendRequests
-        isOpen={showRequests}
-        onClose={() => setShowRequests(false)}
-        onRequestHandled={() => {
-          fetchFriends();
-          fetchPendingCount();
-        }}
-      />
-      <ProfileSettings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
-      <InviteFriend isOpen={showInvite} onClose={() => setShowInvite(false)} />
-    </div>
-  );
+      <div className="sidebar-list">
+        {chatError && <div className="inline-error"><p>{chatError}</p><button className="text-button" onClick={fetchChats}><HiOutlineRefresh /> Retry</button></div>}
+        {activeTab === "chats" ? <ChatList chats={filteredChats} loading={loadingChats && !chats.length} activeChatId={activeChat?._id} onChatSelect={openChat} /> : <FriendList friends={filteredFriends} loading={loadingFriends} activeFriendId={activeChat?.otherUser?._id} onFriendSelect={handleFriendClick} onFriendRemoved={() => { void fetchFriends(); void fetchChats(); }} />}
+        {creatingChat && <div className="inline-loading" role="status"><span className="spinner" /> Opening conversation…</div>}
+      </div>
+      <footer className="sidebar-profile"><Avatar src={user?.avatar} alt="" /><div className="min-w-0 flex-1"><strong className="block truncate">{user?.fullName}</strong><span className="muted text-xs truncate block">@{user?.username}</span></div>
+        <button className="icon-button" onClick={() => setModal("settings")} aria-label="Settings"><HiOutlineCog /></button>
+        <button className="icon-button" onClick={handleLogout} disabled={loggingOut} aria-label="Log out"><HiOutlineLogout /></button>
+      </footer>
+    </aside>
+    <main className={`conversation-main ${activeChat || routeError ? "is-open" : ""}`}>
+      {routeError && !activeChat ? <div className="empty-state h-full"><HiOutlineChatAlt2 /><h2>Conversation unavailable</h2><p>{chatError || routeError}</p><button className="button secondary" onClick={() => { routeRequest.current = null; setRouteError(""); void fetchChats(); }}>Try again</button><button className="text-button" onClick={backToList}>Back to chats</button></div> : activeChat ? <ChatWindow key={activeChat._id} chat={activeChat} onBack={backToList} /> : <div className="welcome-panel"><div className="welcome-icon"><HiOutlineChatAlt2 /></div><h2>Your conversations, all here.</h2><p>Select a chat or choose a friend to start a conversation.</p><button className="button secondary" onClick={() => { setActiveTab("friends"); setModal("add"); }}><HiOutlineUserAdd /> Find a friend</button><span className="welcome-connection">{isConnected ? "Messages sync in real time" : "Reconnecting to messages…"}</span></div>}
+    </main>
+    <AddFriend isOpen={modal === "add"} onClose={() => setModal(null)} onRequestSent={fetchPendingCount} />
+    <FriendRequests isOpen={modal === "requests"} onClose={() => setModal(null)} onRequestHandled={() => { void fetchFriends(); void fetchPendingCount(); }} />
+    <ProfileSettings isOpen={modal === "settings"} onClose={() => setModal(null)} />
+    <InviteFriend isOpen={modal === "invite"} onClose={() => setModal(null)} />
+    <PinModal isOpen={modal === "unlock"} mode="verify" title="Unlock your chats" subtitle="Enter your chat lock PIN to reveal hidden conversations." onSubmit={reveal} onClose={() => setModal(null)} />
+  </div>;
 };
-
 export default ChatPage;

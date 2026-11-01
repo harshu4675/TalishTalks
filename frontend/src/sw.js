@@ -1,72 +1,31 @@
-import { precacheAndRoute } from "workbox-precaching";
-
-// Precache assets
+import { precacheAndRoute, cleanupOutdatedCaches, getCacheKeyForURL } from "workbox-precaching";
 precacheAndRoute(self.__WB_MANIFEST);
-
-// 🔥 Listen for skip waiting message from client
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
+cleanupOutdatedCaches();
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.mode !== "navigate" || url.origin !== self.location.origin || /^\/(api|socket.io)\//.test(url.pathname)) return;
+  event.respondWith(fetch(event.request).catch(async () => {
+    const key = getCacheKeyForURL("/index.html");
+    return (key && await caches.match(key)) || Response.error();
+  }));
 });
-
-// ============ PUSH NOTIFICATION HANDLER ============
+self.addEventListener("message", (event) => { if (event.data?.type === "SKIP_WAITING") self.skipWaiting(); });
 self.addEventListener("push", (event) => {
   let data = {};
-
-  try {
-    data = event.data ? event.data.json() : {};
-  } catch (e) {
-    data = {
-      title: "Talish",
-      body: event.data?.text() || "New notification",
-    };
-  }
-
-  const title = data.title || "Talish";
-  const options = {
-    body: data.body || "You have a new notification",
-    icon: data.icon || "/pwa-192x192.png",
-    badge: data.badge || "/pwa-192x192.png",
-    tag: data.tag || "talish-notification",
-    data: data.data || {},
-    vibrate: [200, 100, 200],
-    requireInteraction: false,
-    renotify: true,
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
+  try { data = event.data?.json() || {}; } catch { data = { body: event.data?.text() || "You have a new notification" }; }
+  event.waitUntil(self.registration.showNotification(data.title || "Talish Talks", {
+    body: data.body || "You have a new notification", icon: "/pwa-192x192.png", badge: "/pwa-192x192.png",
+    tag: data.tag || "talish-notification", data: data.data || {}, renotify: true,
+  }));
 });
-
-// ============ NOTIFICATION CLICK HANDLER ============
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-
-  const urlToOpen = event.notification.data?.url || "/";
-
-  event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && "focus" in client) {
-            client.navigate(urlToOpen);
-            return client.focus();
-          }
-        }
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(urlToOpen);
-        }
-      }),
-  );
+  const target = new URL(event.notification.data?.url || "/", self.location.origin);
+  const url = target.origin === self.location.origin ? target.href : `${self.location.origin}/`;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
+    const client = clients.find((item) => item.url.startsWith(self.location.origin));
+    if (client) { await client.navigate(url); return client.focus(); }
+    return self.clients.openWindow(url);
+  }));
 });
-
-// ============ LIFECYCLE ============
-self.addEventListener("install", (event) => {
-  // 🔥 Don't auto-skip - let user choose when to update
-  console.log("📦 New service worker installed, waiting for user action");
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));

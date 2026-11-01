@@ -19,7 +19,7 @@ const register = async (req, res) => {
     if (emailExists) {
       return res.status(400).json({
         success: false,
-        message: "Email is already registered. Try logging in.",
+        message:"Email is already registered. Try logging in.",
       });
     }
 
@@ -29,7 +29,7 @@ const register = async (req, res) => {
     if (usernameExists) {
       return res.status(400).json({
         success: false,
-        message: "Username is already taken. Try another one.",
+        message:"Username is already taken. Try another one.",
       });
     }
 
@@ -45,14 +45,14 @@ const register = async (req, res) => {
 
       res.cookie("token", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        secure: process.env.NODE_ENV ==="production",
+        sameSite: process.env.NODE_ENV ==="production" ?"none" :"lax",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
       return res.status(201).json({
         success: true,
-        message: "Account created successfully! Welcome to Talish Talks 🎉",
+        message:"Account created successfully! Welcome to Talish Talks",
         token,
         user: {
           _id: user._id,
@@ -68,14 +68,14 @@ const register = async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: "Invalid user data",
+        message:"Invalid user data",
       });
     }
   } catch (error) {
     console.error("Register error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error during registration. Please try again.",
+      message:"Server error during registration. Please try again.",
     });
   }
 };
@@ -103,7 +103,7 @@ const login = async (req, res) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials. Please check your email/username.",
+        message:"Invalid credentials. Please check your email/username.",
       });
     }
 
@@ -111,7 +111,7 @@ const login = async (req, res) => {
     if (!isPasswordCorrect) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials. Please check your password.",
+        message:"Invalid credentials. Please check your password.",
       });
     }
 
@@ -119,14 +119,14 @@ const login = async (req, res) => {
 
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.NODE_ENV ==="production",
+      sameSite: process.env.NODE_ENV ==="production" ?"none" :"lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     return res.status(200).json({
       success: true,
-      message: `Welcome back, ${user.fullName}! 👋`,
+      message:`Welcome back, ${user.fullName}!`,
       token,
       user: {
         _id: user._id,
@@ -144,7 +144,7 @@ const login = async (req, res) => {
     console.error("Login error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error during login. Please try again.",
+      message:"Server error during login. Please try again.",
     });
   }
 };
@@ -152,13 +152,13 @@ const login = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
-      .select("-password")
-      .populate("friends", "fullName username avatar isOnline lastSeen");
+      .select("fullName username email avatar about isOnline lastSeen createdAt friends lockedChats")
+      .populate("friends","fullName username avatar isOnline lastSeen");
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:"User not found",
       });
     }
 
@@ -170,7 +170,7 @@ const getMe = async (req, res) => {
     console.error("GetMe error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching user data",
+      message:"Server error while fetching user data",
     });
   }
 };
@@ -181,24 +181,24 @@ const logout = async (req, res) => {
       await User.findByIdAndUpdate(req.user._id, {
         isOnline: false,
         lastSeen: new Date(),
-        socketId: "",
+        socketId:"",
       });
     }
 
-    res.cookie("token", "", {
-      httpOnly: true,
-      expires: new Date(0),
+    res.clearCookie("token", {
+      httpOnly: true, secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", path: "/",
     });
 
     return res.status(200).json({
       success: true,
-      message: "Logged out successfully. See you soon! 👋",
+      message:"Logged out successfully. See you soon!",
     });
   } catch (error) {
     console.error("Logout error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error during logout",
+      message:"Server error during logout",
     });
   }
 };
@@ -211,7 +211,7 @@ const checkUsername = async (req, res) => {
       return res.status(400).json({
         success: false,
         available: false,
-        message: "Username must be at least 3 characters",
+        message:"Username must be at least 3 characters",
       });
     }
 
@@ -219,7 +219,7 @@ const checkUsername = async (req, res) => {
       return res.status(400).json({
         success: false,
         available: false,
-        message: "Username can only contain letters, numbers, and underscores",
+        message:"Username can only contain letters, numbers, and underscores",
       });
     }
 
@@ -231,14 +231,14 @@ const checkUsername = async (req, res) => {
       success: true,
       available: !existingUser,
       message: existingUser
-        ? "Username already taken"
-        : "Username is available",
+        ?"Username already taken"
+        :"Username is available",
     });
   } catch (error) {
     console.error("Check username error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while checking username",
+      message:"Server error while checking username",
     });
   }
 };

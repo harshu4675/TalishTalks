@@ -9,7 +9,7 @@ const dropTTLIndex = async () => {
       // Find the old TTL index on autoDeleteAt
       if (index.expireAfterSeconds !== undefined && index.key?.autoDeleteAt) {
         await Message.dropIndex(index.name);
-        console.log(`✅ Dropped old TTL index: ${index.name}`);
+        console.log(`Dropped old TTL index: ${index.name}`);
       }
     }
   } catch (error) {

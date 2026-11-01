@@ -1,84 +1,56 @@
 const webpush = require("web-push");
 const User = require("../models/User");
 
-// Configure web-push with VAPID keys
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT || "mailto:admin@talish.com",
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY,
-);
+const pushConfigured = () => Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+let configured = false;
 
-/**
- * Send push notification to a specific user
- * @param {String} userId - The user to notify
- * @param {Object} payload - { title, body, icon, badge, data, tag }
- */
 const sendPushToUser = async (userId, payload) => {
-  try {
-    const user = await User.findById(userId).select(
-      "pushSubscriptions isOnline",
+  if (!pushConfigured()) return { sent: 0, failed: 0, disabled: true };
+  if (!configured) {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || "mailto:admin@example.com",
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY,
     );
-
-    if (
-      !user ||
-      !user.pushSubscriptions ||
-      user.pushSubscriptions.length === 0
-    ) {
-      return { sent: 0, failed: 0 };
-    }
-
-    const notificationPayload = JSON.stringify({
-      title: payload.title || "Talish",
+    configured = true;
+  }
+  try {
+    const user = await User.findById(userId).select("pushSubscriptions");
+    if (!user?.pushSubscriptions.length) return { sent: 0, failed: 0 };
+    const body = JSON.stringify({
+      title: payload.title || "Talish Talks",
       body: payload.body || "You have a new notification",
-      icon: payload.icon || "/pwa-192x192.png",
-      badge: payload.badge || "/pwa-192x192.png",
+      icon: "/pwa-192x192.png",
+      badge: "/pwa-192x192.png",
       tag: payload.tag || "talish-notification",
       data: payload.data || {},
-      vibrate: [200, 100, 200],
-      requireInteraction: false,
     });
-
+    const invalidSubs = [];
     let sent = 0;
     let failed = 0;
-    const invalidSubs = [];
-
-    await Promise.all(
-      user.pushSubscriptions.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: sub.keys,
-            },
-            notificationPayload,
-          );
-          sent++;
-        } catch (err) {
-          failed++;
-          // 410 = subscription expired, 404 = not found
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            invalidSubs.push(sub.endpoint);
-          }
-          console.error("Push send error:", err.statusCode, err.body);
-        }
-      }),
-    );
-
-    // Clean up invalid subscriptions
-    if (invalidSubs.length > 0) {
-      await User.findByIdAndUpdate(userId, {
-        $pull: {
-          pushSubscriptions: { endpoint: { $in: invalidSubs } },
-        },
+    await Promise.all(user.pushSubscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification({
+          endpoint: subscription.endpoint,
+          keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
+        }, body);
+        sent++;
+      } catch (error) {
+        failed++;
+        if ([404, 410].includes(error.statusCode)) invalidSubs.push(subscription.endpoint);
+        console.error("Push delivery failed:", error.statusCode || error.message);
+      }
+    }));
+    if (invalidSubs.length) {
+      await User.updateOne({ _id: userId }, {
+        $pull: { pushSubscriptions: { endpoint: { $in: invalidSubs } } },
       });
     }
-
-    console.log(`📲 Push sent to ${userId}: ${sent} success, ${failed} failed`);
     return { sent, failed };
-  } catch (err) {
-    console.error("sendPushToUser error:", err.message);
-    return { sent: 0, failed: 0 };
+  } catch (error) {
+    console.error("Push delivery failed:", error.message);
+    return { sent: 0, failed: 1 };
   }
 };
 
-module.exports = { sendPushToUser };
+module.exports = { sendPushToUser, pushConfigured };

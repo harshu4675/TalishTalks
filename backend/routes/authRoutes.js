@@ -30,6 +30,7 @@ const registerValidation = [
 
   body("email")
     .trim()
+    .isLength({ max: 254 })
     .notEmpty()
     .withMessage("Email is required")
     .isEmail()
@@ -39,7 +40,7 @@ const registerValidation = [
   body("password")
     .notEmpty()
     .withMessage("Password is required")
-    .isLength({ min: 6 })
+    .isLength({ min: 6, max: 72 })
     .withMessage("Password must be at least 6 characters")
     .matches(/^(?=.*[a-zA-Z])(?=.*\d)/)
     .withMessage("Password must contain at least one letter and one number"),
@@ -49,6 +50,7 @@ const registerValidation = [
 const loginValidation = [
   body("identifier")
     .trim()
+    .isLength({ max: 254 })
     .notEmpty()
     .withMessage("Email or username is required"),
 

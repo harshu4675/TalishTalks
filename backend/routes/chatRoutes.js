@@ -11,7 +11,7 @@ const {
   togglePinChat,
   toggleMuteChat,
   toggleMarkUnread,
-  deleteChat,
+  deleteChat, pinLimiter,
 } = require("../controllers/chatController");
 const { protect } = require("../middleware/authMiddleware");
 
@@ -23,9 +23,9 @@ router.get("/locked", getLockedChats);
 router.post("/create", createChat);
 router.put("/:chatId/clear", clearChat);
 router.put("/:chatId/disappearing", setDisappearing);
-router.put("/:chatId/lock", lockChat);
-router.put("/:chatId/unlock", unlockChat);
-router.put("/:chatId/remove-lock", removeLock);
+router.put("/:chatId/lock", pinLimiter, lockChat);
+router.put("/:chatId/unlock", pinLimiter, unlockChat);
+router.put("/:chatId/remove-lock", pinLimiter, removeLock);
 
 router.put("/:chatId/pin", togglePinChat);
 router.put("/:chatId/mute", toggleMuteChat);

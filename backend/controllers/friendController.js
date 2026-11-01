@@ -6,10 +6,10 @@ const sendFriendRequest = async (req, res) => {
   try {
     const { username } = req.body;
 
-    if (!username) {
+    if (typeof username !== "string" || !username.trim() || username.length > 20) {
       return res.status(400).json({
         success: false,
-        message: "Username is required",
+        message:"Username is required",
       });
     }
 
@@ -20,20 +20,20 @@ const sendFriendRequest = async (req, res) => {
     if (!receiver) {
       return res.status(404).json({
         success: false,
-        message: "No user found with that username",
+        message:"No user found with that username",
       });
     }
 
     if (receiver._id.toString() === req.user._id.toString()) {
       return res.status(400).json({
         success: false,
-        message: "You can't send a friend request to yourself 😅",
+        message:"You can't send a friend request to yourself",
       });
     }
 
     const currentUser = await User.findById(req.user._id);
 
-    // 🔥 NEW: Block check - both directions
+    //  NEW: Block check - both directions
     const iBlockedThem = currentUser.blockedUsers?.some(
       (id) => id.toString() === receiver._id.toString(),
     );
@@ -41,7 +41,7 @@ const sendFriendRequest = async (req, res) => {
       return res.status(403).json({
         success: false,
         message:
-          "You have blocked this user. Unblock them to send a friend request.",
+"You have blocked this user. Unblock them to send a friend request.",
       });
     }
 
@@ -51,14 +51,14 @@ const sendFriendRequest = async (req, res) => {
     if (theyBlockedMe) {
       return res.status(403).json({
         success: false,
-        message: "You cannot send a friend request to this user.",
+        message:"You cannot send a friend request to this user.",
       });
     }
 
     if (currentUser.friends.includes(receiver._id)) {
       return res.status(400).json({
         success: false,
-        message: `You are already friends with @${receiver.username}`,
+        message:`You are already friends with @${receiver.username}`,
       });
     }
 
@@ -70,29 +70,29 @@ const sendFriendRequest = async (req, res) => {
     });
 
     if (existingRequest) {
-      if (existingRequest.status === "pending") {
+      if (existingRequest.status ==="pending") {
         if (existingRequest.sender.toString() === req.user._id.toString()) {
           return res.status(400).json({
             success: false,
-            message: "Friend request already sent. Waiting for response.",
+            message:"Friend request already sent. Waiting for response.",
           });
         } else {
           return res.status(400).json({
             success: false,
-            message: `@${receiver.username} has already sent you a friend request. Check your requests!`,
+            message:`@${receiver.username} has already sent you a friend request. Check your requests!`,
           });
         }
-      } else if (existingRequest.status === "rejected") {
+      } else if (existingRequest.status ==="rejected") {
         existingRequest.sender = req.user._id;
         existingRequest.receiver = receiver._id;
-        existingRequest.status = "pending";
+        existingRequest.status ="pending";
         await existingRequest.save();
       }
     } else {
       await FriendRequest.create({
         sender: req.user._id,
         receiver: receiver._id,
-        status: "pending",
+        status:"pending",
       });
     }
 
@@ -106,30 +106,30 @@ const sendFriendRequest = async (req, res) => {
           username: req.user.username,
           avatar: req.user.avatar,
         },
-        message: `${req.user.fullName} sent you a friend request!`,
+        message:`${req.user.fullName} sent you a friend request!`,
       });
     }
 
-    // 🔔 Push notification (works even when app is closed)
+    //  Push notification (works even when app is closed)
     sendPushToUser(receiver._id.toString(), {
-      title: "New Friend Request",
-      body: `${req.user.fullName} sent you a friend request`,
-      tag: "friend-request",
+      title:"New Friend Request",
+      body:`${req.user.fullName} sent you a friend request`,
+      tag:"friend-request",
       data: {
-        type: "friend-request",
-        url: "/",
+        type:"friend-request",
+        url:"/",
       },
     });
 
     return res.status(201).json({
       success: true,
-      message: `Friend request sent to @${receiver.username} 🚀`,
+      message:`Friend request sent to @${receiver.username}`,
     });
   } catch (error) {
     console.error("Send friend request error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while sending friend request",
+      message:"Server error while sending friend request",
     });
   }
 };
@@ -143,16 +143,16 @@ const getFriendRequests = async (req, res) => {
   try {
     const received = await FriendRequest.find({
       receiver: req.user._id,
-      status: "pending",
+      status:"pending",
     })
-      .populate("sender", "fullName username avatar about isOnline")
+      .populate("sender","fullName username avatar about isOnline")
       .sort({ createdAt: -1 });
 
     const sent = await FriendRequest.find({
       sender: req.user._id,
-      status: "pending",
+      status:"pending",
     })
-      .populate("receiver", "fullName username avatar about isOnline")
+      .populate("receiver","fullName username avatar about isOnline")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -166,7 +166,7 @@ const getFriendRequests = async (req, res) => {
     console.error("Get friend requests error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching friend requests",
+      message:"Server error while fetching friend requests",
     });
   }
 };
@@ -183,45 +183,45 @@ const respondToRequest = async (req, res) => {
     if (!requestId || !action) {
       return res.status(400).json({
         success: false,
-        message: "Request ID and action are required",
+        message:"Request ID and action are required",
       });
     }
 
-    if (!["accept", "reject"].includes(action)) {
+    if (!["accept","reject"].includes(action)) {
       return res.status(400).json({
         success: false,
-        message: "Action must be 'accept' or 'reject'",
+        message:"Action must be'accept' or'reject'",
       });
     }
 
     const request = await FriendRequest.findById(requestId).populate(
-      "sender receiver",
-      "fullName username avatar socketId blockedUsers",
+"sender receiver",
+"fullName username avatar socketId blockedUsers",
     );
 
     if (!request) {
       return res.status(404).json({
         success: false,
-        message: "Friend request not found",
+        message:"Friend request not found",
       });
     }
 
     if (request.receiver._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to respond to this request",
+        message:"You are not authorized to respond to this request",
       });
     }
 
-    if (request.status !== "pending") {
+    if (request.status !=="pending") {
       return res.status(400).json({
         success: false,
-        message: "This request has already been responded to",
+        message:"This request has already been responded to",
       });
     }
 
-    // 🔥 NEW: Block check before accepting
-    if (action === "accept") {
+    //  NEW: Block check before accepting
+    if (action ==="accept") {
       const iBlockedThem = request.receiver.blockedUsers?.some(
         (id) => id.toString() === request.sender._id.toString(),
       );
@@ -233,15 +233,15 @@ const respondToRequest = async (req, res) => {
         await FriendRequest.findByIdAndDelete(requestId);
         return res.status(403).json({
           success: false,
-          message: "Cannot accept - one of you has blocked the other.",
+          message:"Cannot accept - one of you has blocked the other.",
         });
       }
     }
 
     const io = req.app.get("io");
 
-    if (action === "accept") {
-      request.status = "accepted";
+    if (action ==="accept") {
+      request.status ="accepted";
       await request.save();
 
       await User.findByIdAndUpdate(request.sender._id, {
@@ -261,24 +261,24 @@ const respondToRequest = async (req, res) => {
             username: request.receiver.username,
             avatar: request.receiver.avatar,
           },
-          message: `${request.receiver.fullName} accepted your friend request! 🎉`,
+          message:`${request.receiver.fullName} accepted your friend request!`,
         });
       }
 
-      // 🔔 Push notification to sender
+      //  Push notification to sender
       sendPushToUser(request.sender._id.toString(), {
-        title: "Friend Request Accepted 🎉",
-        body: `${request.receiver.fullName} accepted your friend request`,
-        tag: "friend-accepted",
+        title:"Friend Request Accepted",
+        body:`${request.receiver.fullName} accepted your friend request`,
+        tag:"friend-accepted",
         data: {
-          type: "friend-accepted",
-          url: "/",
+          type:"friend-accepted",
+          url:"/",
         },
       });
 
       return res.status(200).json({
         success: true,
-        message: `You are now friends with @${request.sender.username} 🎉`,
+        message:`You are now friends with @${request.sender.username}`,
         friend: {
           _id: request.sender._id,
           fullName: request.sender.fullName,
@@ -297,14 +297,14 @@ const respondToRequest = async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        message: "Friend request rejected",
+        message:"Friend request rejected",
       });
     }
   } catch (error) {
     console.error("Respond to request error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while responding to request",
+      message:"Server error while responding to request",
     });
   }
 };
@@ -317,14 +317,14 @@ const respondToRequest = async (req, res) => {
 const getFriendsList = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate(
-      "friends",
-      "fullName username avatar about isOnline lastSeen",
+"friends",
+"fullName username avatar about isOnline lastSeen",
     );
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:"User not found",
       });
     }
 
@@ -337,7 +337,7 @@ const getFriendsList = async (req, res) => {
     console.error("Get friends list error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching friends list",
+      message:"Server error while fetching friends list",
     });
   }
 };
@@ -355,7 +355,7 @@ const removeFriend = async (req, res) => {
     if (!friend) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:"User not found",
       });
     }
 
@@ -383,13 +383,13 @@ const removeFriend = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `@${friend.username} has been removed from your friends`,
+      message:`@${friend.username} has been removed from your friends`,
     });
   } catch (error) {
     console.error("Remove friend error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while removing friend",
+      message:"Server error while removing friend",
     });
   }
 };
@@ -407,14 +407,14 @@ const cancelFriendRequest = async (req, res) => {
     if (!request) {
       return res.status(404).json({
         success: false,
-        message: "Friend request not found",
+        message:"Friend request not found",
       });
     }
 
     if (request.sender.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
-        message: "You can only cancel your own requests",
+        message:"You can only cancel your own requests",
       });
     }
 
@@ -429,13 +429,13 @@ const cancelFriendRequest = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Friend request cancelled",
+      message:"Friend request cancelled",
     });
   } catch (error) {
     console.error("Cancel friend request error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message:"Server error",
     });
   }
 };

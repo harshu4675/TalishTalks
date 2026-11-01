@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Base URL for the backend API
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  import.meta.env.VITE_API_URL || "/api";
 
 // Create Axios instance with default configuration
 const api = axios.create({
@@ -14,60 +14,18 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// ---- REQUEST INTERCEPTOR ----
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("talish_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
-
-// ---- RESPONSE INTERCEPTOR ----
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response) {
-      const { status, data } = error.response;
-
-      switch (status) {
-        case 401:
-          console.warn("🔒 Unauthorized - Clearing token");
-          localStorage.removeItem("talish_token");
-          localStorage.removeItem("talish_user");
-          if (window.location.pathname !== "/auth") {
-            window.location.href = "/auth";
-          }
-          break;
-        case 403:
-          console.warn("🚫 Forbidden");
-          break;
-        case 404:
-          console.warn("❓ Not found");
-          break;
-        case 429:
-          console.warn("⏳ Too many requests");
-          break;
-        case 500:
-          console.error("💥 Server error");
-          break;
-        default:
-          console.error(`Error ${status}:`, data?.message);
-      }
-    } else if (error.request) {
-      console.error("🌐 Network error - No response from server");
-    } else {
-      console.error("❌ Error:", error.message);
-    }
-
-    return Promise.reject(error);
-  },
-);
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("talish_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+api.interceptors.response.use((response) => response, (error) => {
+  const url = error.config?.url || "";
+  if (error.response?.status === 401 && localStorage.getItem("talish_token") && !/auth\/(login|register)|chats\/.*\/(unlock|lock|remove-lock)/.test(url)) {
+    window.dispatchEvent(new Event("talish:session-expired"));
+  }
+  return Promise.reject(error);
+});
 
 // ---- API ENDPOINTS ----
 
@@ -81,39 +39,38 @@ export const authAPI = {
 
 // User endpoints
 export const userAPI = {
-  search: (query) => api.get(`/users/search?q=${query}`),
-  getProfile: (username) => api.get(`/users/profile/${username}`),
+  search: (query, config) => api.get("/users/search", { ...config, params: { q: query } }),
+  getProfile: (username) => api.get(`/users/profile/${encodeURIComponent(username)}`),
   updateProfile: (data) => api.put("/users/profile", data),
   // Block / Unblock
   block: (userId) => api.post(`/users/block/${userId}`),
   unblock: (userId) => api.post(`/users/unblock/${userId}`),
   getBlocked: () => api.get("/users/blocked"),
   // Avatar upload
-  uploadAvatar: (formData, onProgress) =>
+  uploadAvatar: (formData, onProgress, config) =>
     api.post("/users/avatar", formData, {
       headers: { "Content-Type": "multipart/form-data" },
       onUploadProgress: (progressEvent) => {
         const percent = Math.round(
-          (progressEvent.loaded * 100) / progressEvent.total,
-        );
+          (progressEvent.loaded * 100) / (progressEvent.total || progressEvent.loaded || 1));
         if (onProgress) onProgress(percent);
-      },
+      }, ...config,
     }),
 };
 
 // Friend endpoints
 export const friendAPI = {
   sendRequest: (data) => api.post("/friends/request", data),
-  getRequests: () => api.get("/friends/requests"),
+  getRequests: (config) => api.get("/friends/requests", config),
   respond: (data) => api.put("/friends/respond", data),
-  getList: () => api.get("/friends/list"),
+  getList: (config) => api.get("/friends/list", config),
   removeFriend: (friendId) => api.delete(`/friends/${friendId}`),
   cancelRequest: (requestId) => api.delete(`/friends/request/${requestId}`),
 };
 
 // Chat endpoints
 export const chatAPI = {
-  getAll: () => api.get("/chats"),
+  getAll: (config) => api.get("/chats", config),
   create: (data) => api.post("/chats/create", data),
   clearChat: (chatId) => api.put(`/chats/${chatId}/clear`),
   setDisappearing: (chatId, data) =>
@@ -134,17 +91,16 @@ export const chatAPI = {
 
 // Message endpoints
 export const messageAPI = {
-  get: (chatId, params) => api.get(`/messages/${chatId}`, { params }),
+  get: (chatId, params, config) => api.get(`/messages/${chatId}`, { ...config, params }),
   send: (data) => api.post("/messages/send", data),
-  sendMedia: (formData, onProgress) =>
+  sendMedia: (formData, onProgress, config) =>
     api.post("/messages/send-media", formData, {
       headers: { "Content-Type": "multipart/form-data" },
       onUploadProgress: (progressEvent) => {
         const percent = Math.round(
-          (progressEvent.loaded * 100) / progressEvent.total,
-        );
+          (progressEvent.loaded * 100) / (progressEvent.total || progressEvent.loaded || 1));
         if (onProgress) onProgress(percent);
-      },
+      }, ...config,
     }),
   edit: (messageId, content) =>
     api.put(`/messages/${messageId}/edit`, { content }),
@@ -159,11 +115,11 @@ export const messageAPI = {
     api.post("/messages/bulk-delete-everyone", { messageIds }),
   search: (params) => api.get("/messages/search", { params }),
 
-  // 🔥 NEW: Leave cleanup for Option A disappearing messages
+  //  NEW: Leave cleanup for Option A disappearing messages
   leaveCleanup: (chatId) => api.post(`/messages/${chatId}/leave-cleanup`),
 };
 
-// 🔔 Push Notification endpoints
+//  Push Notification endpoints
 export const pushAPI = {
   getVapidKey: () => api.get("/push/vapid-key"),
   subscribe: (subscription) => api.post("/push/subscribe", { subscription }),

@@ -1,12 +1,30 @@
-# React + Vite
+# Talish Talks frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite client for the existing Express/Socket.IO API.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+From this directory:
 
-## Expanding the ESLint configuration
+```sh
+npm ci
+cp .env.example .env
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The development server listens on `0.0.0.0:3000` and proxies `/api` and `/socket.io` to the backend on port 5000. Leave `VITE_API_URL` and `VITE_SOCKET_URL` empty for this setup or a same-origin deployment. For separate API hosting, set both explicitly; the API URL must include `/api`, and its origin must be listed in backend `CLIENT_URL`.
+
+## Checks
+
+```sh
+npm run lint
+npm run build
+npx playwright install chromium
+npm test
+```
+
+`npm test` expects the frontend on port 3000 and an **isolated test backend** on port 5000. It creates real test accounts and exercises two-user messaging. Never target production. Override `PLAYWRIGHT_BASE_URL` when necessary. An existing Chromium can be selected with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
+
+The production build includes a service worker. Test it with `npm run preview -- --port 4173`, not the development server. Offline navigation serves the app shell; private messages are not written to an offline cache.
+
+See `../docs/implementation-audit.md` for the audit, verified results, deployment variables, and remaining limitations.

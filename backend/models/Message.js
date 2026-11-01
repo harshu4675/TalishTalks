@@ -12,6 +12,7 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    clientId: { type: String, maxlength: 100 },
     content: {
       type: String,
       default: "",
@@ -75,10 +76,26 @@ const messageSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Persist per-recipient cleanup deadlines so server restarts do not lose jobs.
+    disappearingFor: [
+      {
+        _id: false,
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        deleteAt: { type: Date, required: true },
+      },
+    ],
   },
   {
     timestamps: true,
   },
 );
+
+messageSchema.index({ chat: 1, createdAt: -1, _id: -1 });
+messageSchema.index({ mediaAutoDeleteAt: 1 });
+messageSchema.index({ "disappearingFor.deleteAt": 1 });
+messageSchema.index({ autoDeleteAt: 1 });
+messageSchema.index({ chat: 1, sender: 1, clientId: 1 }, {
+  unique: true, partialFilterExpression: { clientId: { $type: "string" } },
+});
 
 module.exports = mongoose.model("Message", messageSchema);

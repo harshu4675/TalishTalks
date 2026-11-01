@@ -59,6 +59,7 @@ const chatSchema = new mongoose.Schema(
 
 // Index for fast lookup of chats by participants
 chatSchema.index({ participants: 1 });
+chatSchema.index({ participants: 1, updatedAt: -1 });
 
 const Chat = mongoose.model("Chat", chatSchema);
 
