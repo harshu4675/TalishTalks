@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { cloudinary } = require("../utils/cloudinary");
 const multer = require("multer");
+const { validId } = require("../utils/messageUtils");
 
 // ============================================
 // @desc    Search users by username
@@ -11,32 +12,20 @@ const searchUsers = async (req, res) => {
   try {
     const { q } = req.query;
 
-    if (!q || q.trim().length < 2) {
+    if (typeof q !== "string" || q.trim().length < 2 || q.length > 100) {
       return res.status(400).json({
         success: false,
-        message: "Search query must be at least 2 characters",
+        message:"Search query must be at least 2 characters",
       });
     }
 
-    // Get current user to exclude blocked users from search
-    const currentUser = await User.findById(req.user._id);
-    const blockedIds = currentUser.blockedUsers || [];
-
+    const query = q.trim().slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const currentUser = await User.findById(req.user._id).select("blockedUsers");
     const users = await User.find({
-      $and: [
-        { _id: { $ne: req.user._id } },
-        { _id: { $nin: blockedIds } },
-        { blockedUsers: { $ne: req.user._id } },
-        {
-          $or: [
-            { username: { $regex: q, $options: "i" } },
-            { fullName: { $regex: q, $options: "i" } },
-          ],
-        },
-      ],
-    })
-      .select("fullName username avatar about isOnline")
-      .limit(20);
+      _id: { $ne: req.user._id, $nin: currentUser.blockedUsers },
+      blockedUsers: { $ne: req.user._id },
+      $or: [{ username: { $regex: query, $options: "i" } }, { fullName: { $regex: query, $options: "i" } }],
+    }).select("fullName username avatar about isOnline").limit(20);
 
     return res.status(200).json({
       success: true,
@@ -47,7 +36,7 @@ const searchUsers = async (req, res) => {
     console.error("Search users error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while searching users",
+      message:"Server error while searching users",
     });
   }
 };
@@ -64,13 +53,13 @@ const getUserProfile = async (req, res) => {
     const user = await User.findOne({
       username: username.toLowerCase(),
     }).select(
-      "-password -socketId -lockedChats -chatLockPin -blockedUsers -pinnedChats -mutedChats -markedUnreadChats",
+"fullName username avatar about isOnline lastSeen createdAt friends",
     );
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:"User not found",
       });
     }
 
@@ -82,7 +71,7 @@ const getUserProfile = async (req, res) => {
     console.error("Get user profile error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching profile",
+      message:"Server error while fetching profile",
     });
   }
 };
@@ -101,31 +90,34 @@ const updateProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:"User not found",
       });
     }
 
     if (fullName !== undefined) {
-      if (fullName.trim().length < 2 || fullName.trim().length > 50) {
+      if (typeof fullName !== "string" || fullName.trim().length < 2 || fullName.trim().length > 50) {
         return res.status(400).json({
           success: false,
-          message: "Full name must be between 2 and 50 characters",
+          message:"Full name must be between 2 and 50 characters",
         });
       }
       user.fullName = fullName.trim();
     }
 
     if (about !== undefined) {
-      if (about.length > 150) {
+      if (typeof about !== "string" || about.length > 150) {
         return res.status(400).json({
           success: false,
-          message: "About cannot exceed 150 characters",
+          message:"About cannot exceed 150 characters",
         });
       }
       user.about = about;
     }
 
     if (avatar !== undefined) {
+      if (typeof avatar !== "string" || (avatar && !avatar.startsWith("https://res.cloudinary.com/"))) {
+        return res.status(400).json({ success: false, message: "Upload an image to change your avatar" });
+      }
       user.avatar = avatar;
     }
 
@@ -133,7 +125,7 @@ const updateProfile = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Profile updated successfully ✨",
+      message:"Profile updated successfully",
       user: {
         _id: updatedUser._id,
         fullName: updatedUser.fullName,
@@ -147,13 +139,13 @@ const updateProfile = async (req, res) => {
     console.error("Update profile error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating profile",
+      message:"Server error while updating profile",
     });
   }
 };
 
 // ============================================
-// 🔥 Upload Avatar to Cloudinary
+//  Upload Avatar to Cloudinary
 // @route   POST /api/users/avatar
 // @access  Private
 // ============================================
@@ -162,7 +154,7 @@ const uploadAvatar = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "No image file provided",
+        message:"No image file provided",
       });
     }
 
@@ -170,38 +162,28 @@ const uploadAvatar = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:"User not found",
       });
-    }
-
-    // Delete old avatar from Cloudinary if it exists
-    if (user.avatarPublicId) {
-      try {
-        await cloudinary.uploader.destroy(user.avatarPublicId);
-        console.log(`🗑️ Deleted old avatar: ${user.avatarPublicId}`);
-      } catch (err) {
-        console.error("Failed to delete old avatar:", err.message);
-      }
     }
 
     // Upload new avatar to Cloudinary from buffer
     const uploadResult = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          folder: "talish_avatars",
+          folder:"talish_avatars",
           transformation: [
             {
               width: 400,
               height: 400,
-              crop: "fill",
-              gravity: "face",
+              crop:"fill",
+              gravity:"face",
             },
             {
-              quality: "auto",
-              fetch_format: "auto",
+              quality:"auto",
+              fetch_format:"auto",
             },
           ],
-          resource_type: "image",
+          resource_type:"image",
         },
         (error, result) => {
           if (error) reject(error);
@@ -211,16 +193,20 @@ const uploadAvatar = async (req, res) => {
       stream.end(req.file.buffer);
     });
 
-    // Save avatar URL + public_id to user
-    user.avatar = uploadResult.secure_url;
-    user.avatarPublicId = uploadResult.public_id;
-    await user.save();
-
-    console.log(`✅ Avatar uploaded for user: ${user.username}`);
+    const previousPublicId = user.avatarPublicId;
+    let saved;
+    try {
+      saved = await User.findOneAndUpdate({ _id: user._id }, { $set: { avatar: uploadResult.secure_url, avatarPublicId: uploadResult.public_id } }, { new: true });
+    } catch (error) {
+      await cloudinary.uploader.destroy(uploadResult.public_id).catch(() => {});
+      throw error;
+    }
+    if (!saved) { await cloudinary.uploader.destroy(uploadResult.public_id).catch(() => {}); return res.status(404).json({ success: false, message: "User not found" }); }
+    if (previousPublicId && previousPublicId !== uploadResult.public_id) await cloudinary.uploader.destroy(previousPublicId).catch((error) => console.error("Old avatar cleanup failed:", error.message));
 
     return res.status(200).json({
       success: true,
-      message: "Avatar uploaded successfully! 📸",
+      message:"Avatar uploaded successfully!",
       avatar: uploadResult.secure_url,
       avatarPublicId: uploadResult.public_id,
     });
@@ -228,24 +214,25 @@ const uploadAvatar = async (req, res) => {
     console.error("Upload avatar error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Failed to upload avatar",
+      message:"Failed to upload avatar",
     });
   }
 };
 
 // ============================================
-// 🔥 Block a user
+//  Block a user
 // @route   POST /api/users/block/:userId
 // @access  Private
 // ============================================
 const blockUser = async (req, res) => {
   try {
     const { userId } = req.params;
+    if (!validId(userId)) return res.status(400).json({ success: false, message: "Invalid user ID" });
 
     if (userId === req.user._id.toString()) {
       return res.status(400).json({
         success: false,
-        message: "You cannot block yourself",
+        message:"You cannot block yourself",
       });
     }
 
@@ -253,7 +240,7 @@ const blockUser = async (req, res) => {
     if (!targetUser) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:"User not found",
       });
     }
 
@@ -263,7 +250,7 @@ const blockUser = async (req, res) => {
     if (currentUser.blockedUsers.includes(userId)) {
       return res.status(400).json({
         success: false,
-        message: "User is already blocked",
+        message:"User is already blocked",
       });
     }
 
@@ -291,19 +278,19 @@ const blockUser = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `${targetUser.fullName} has been blocked 🚫`,
+      message:`${targetUser.fullName} has been blocked`,
     });
   } catch (error) {
     console.error("Block user error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message:"Server error",
     });
   }
 };
 
 // ============================================
-// 🔥 Unblock a user
+//  Unblock a user
 // @route   POST /api/users/unblock/:userId
 // @access  Private
 // ============================================
@@ -316,7 +303,7 @@ const unblockUser = async (req, res) => {
     if (!currentUser.blockedUsers.includes(userId)) {
       return res.status(400).json({
         success: false,
-        message: "User is not blocked",
+        message:"User is not blocked",
       });
     }
 
@@ -335,27 +322,27 @@ const unblockUser = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "User unblocked ✓",
+      message:"User unblocked",
     });
   } catch (error) {
     console.error("Unblock user error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message:"Server error",
     });
   }
 };
 
 // ============================================
-// 🔥 Get list of blocked users
+//  Get list of blocked users
 // @route   GET /api/users/blocked
 // @access  Private
 // ============================================
 const getBlockedUsers = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate(
-      "blockedUsers",
-      "fullName username avatar",
+"blockedUsers",
+"fullName username avatar",
     );
 
     return res.status(200).json({
@@ -367,7 +354,7 @@ const getBlockedUsers = async (req, res) => {
     console.error("Get blocked users error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message:"Server error",
     });
   }
 };

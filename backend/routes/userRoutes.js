@@ -13,13 +13,13 @@ const { protect } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// 🔥 Multer - memory storage (no disk, straight to Cloudinary)
+//  Multer - memory storage (no disk, straight to Cloudinary)
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed"), false);
@@ -38,7 +38,7 @@ router.get("/blocked", getBlockedUsers);
 router.post("/block/:userId", blockUser);
 router.post("/unblock/:userId", unblockUser);
 
-// 🔥 NEW: Avatar upload
+//  NEW: Avatar upload
 router.post("/avatar", upload.single("avatar"), uploadAvatar);
 
 // GET /api/users/profile/:username

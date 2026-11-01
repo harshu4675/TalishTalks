@@ -25,7 +25,12 @@ const protect = async (req, res, next) => {
   }
 
   try {
-    // Verify the token
+    if (!token.startsWith("Bearer ") && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      const origin = req.headers.origin;
+      if (origin && !req.app.get("allowedOrigins").includes(origin)) {
+        return res.status(403).json({ success: false, message: "Request origin is not allowed" });
+      }
+    }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Find user by ID from token and attach to request

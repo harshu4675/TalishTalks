@@ -62,7 +62,7 @@ const userSchema = new mongoose.Schema(
     // About/Bio text
     about: {
       type: String,
-      default: "Hey there! I am using Talish Talks 💬",
+      default: "Hey there! I am using Talish Talks.",
       maxlength: [150, "About cannot exceed 150 characters"],
     },
 
@@ -105,7 +105,7 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Chat lock PIN (encrypted) - one PIN for all locked chats
+    // Bcrypt hash of the optional chat-lock PIN; never returned by normal queries.
     chatLockPin: {
       type: String,
       default: "",
@@ -120,7 +120,7 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // 🔥 NEW: Blocked users array
+    //  NEW: Blocked users array
     blockedUsers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -128,7 +128,7 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // 🔥 NEW: Pinned chats (max 3, like WhatsApp)
+    //  NEW: Pinned chats (max 3, like WhatsApp)
     pinnedChats: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -136,7 +136,7 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // 🔥 NEW: Muted chats (no notifications)
+    //  NEW: Muted chats (no notifications)
     mutedChats: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -144,7 +144,7 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // 🔥 NEW: Chats marked as unread by user (visual flag only)
+    //  NEW: Chats marked as unread by user (visual flag only)
     markedUnreadChats: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -177,15 +177,9 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Generate default avatar
-userSchema.pre("save", function (next) {
-  if (!this.avatar) {
-    this.avatar = `https://api.dicebear.com/7.x/initials/svg?seed=${this.username}&backgroundColor=E8713A&textColor=ffffff`;
-  }
-  next();
-});
+// Empty avatars use the local icon fallback; no third-party tracking/request is needed.
 
-// 🔥 NEW: Helper method to check if a user is blocked
+//  NEW: Helper method to check if a user is blocked
 userSchema.methods.hasBlocked = function (userId) {
   return this.blockedUsers.some((id) => id.toString() === userId.toString());
 };
