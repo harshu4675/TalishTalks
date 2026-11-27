@@ -1,0 +1,21 @@
+# Talish Talks - Netlify redirects
+#
+# The frontend is a single-page application: the router owns every path, so
+# a direct request for a client-side route must be answered with the
+# application shell instead of a 404.
+#
+# Only the application's own routes are listed here. `/api/*` and
+# `/socket.io/*` are deliberately left out so the proxy rules that forward
+# live traffic to the backend keep working - a blanket `/*` rule would
+# shadow them and break authentication and messaging.
+#
+# The file lives in `frontend/public`, so Vite copies it into `frontend/dist`
+# and Netlify picks it up from the publish directory.
+
+/signin     /index.html  200
+/register   /index.html  200
+/chat/*     /index.html  200
+/contacts   /index.html  200
+/profile    /index.html  200
+/settings   /index.html  200
+/404        /index.html  200

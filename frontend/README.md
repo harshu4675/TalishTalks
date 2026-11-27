@@ -30,6 +30,23 @@ the request.
 | `npm run lint`      | ESLint over `src` and `tests`.                             |
 | `npm test`          | Playwright browser suite (see below).                      |
 
+### Deployment
+
+The publish directory is `frontend/dist` and the build command is
+`cd frontend && npm ci && npm run build`.
+
+`frontend/public/_redirects` is copied into the publish directory and gives the
+host the SPA fallback: a direct request for `/signin`, `/register`, `/chat/*`,
+`/contacts`, `/profile`, `/settings` or `/404` is answered with
+`index.html` so the router can take over. Only the application's own routes
+are listed - `/api/*` and `/socket.io/*` are left alone on purpose, because a
+blanket `/*` rule would shadow the proxy that forwards live traffic to the
+backend and break authentication and messaging.
+
+Set `VITE_API_URL` to the absolute URL of the deployed backend (it must end in
+`/api`) and `VITE_SOCKET_URL` to the backend origin, unless both the frontend
+and the backend are served from the same origin.
+
 ---
 
 ## Environment

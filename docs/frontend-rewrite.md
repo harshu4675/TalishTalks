@@ -191,6 +191,18 @@ The offline smoke test covers the production build (`npm run preview`), not
 the development server, because the worker is only registered in a production
 build.
 
+### Deployment
+
+`frontend/public/_redirects` is copied into the publish directory and gives
+the host the SPA fallback for the client's own routes (`/signin`,
+`/register`, `/chat/*`, `/contacts`, `/profile`, `/settings`, `/404`). The
+live paths (`/api/*`, `/socket.io/*`) are deliberately excluded, because a
+blanket `/*` rule would shadow the proxy that forwards them to the backend and
+break authentication and messaging.
+
+The rewrite also changes the sign-in path from `/auth` to `/signin`, with
+`/register` for the sign-up screen.
+
 ---
 
 ## Notes and limits
