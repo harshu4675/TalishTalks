@@ -1,3 +1,98 @@
-@keyframes pulse { 50% { opacity: .5; } }
-.skeleton { background: var(--color-border); border-radius: 8px; animation: pulse 1.5s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+/*
+ * Talish Talks - keyframes
+ * ---------------------------------------------------------------------------
+ * Shared motion primitives referenced across the component library.
+ */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(18, 144, 90, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(18, 144, 90, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(18, 144, 90, 0);
+  }
+}
