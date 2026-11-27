@@ -62,7 +62,7 @@ const userSchema = new mongoose.Schema(
     // About/Bio text
     about: {
       type: String,
-      default: "Hey there! I am using Talish Talks.",
+      default: "",
       maxlength: [150, "About cannot exceed 150 characters"],
     },
 

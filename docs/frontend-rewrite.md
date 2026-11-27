@@ -1,8 +1,9 @@
 # Talish Talks frontend rewrite
 
-A complete replacement of the Talish Talks frontend: a new design system, a new
-application shell, and a new authentication implementation. The backend was not
-modified - the client conforms to the existing REST and Socket.IO contract.
+This document records the frontend rewrite baseline. The current application
+extends that architecture with a strict monochrome visual system, persistent
+mobile navigation, and a full Stories feature backed by authenticated API routes
+and expiring media records.
 
 ---
 
@@ -47,8 +48,8 @@ Behaviour worth calling out:
 The previous interface was a single hand-maintained stylesheet. The
 replacement is a layered system:
 
-- `styles/tokens.css` - colour, elevation, radius, spacing, typography and
-  motion as CSS custom properties. The single place to re-theme.
+- `styles/tokens.css` - monochrome colour roles (`#FFFFFF`, `#000000`, `#111111`, `#666666`), borders, spacing, typography and motion tokens.
+- `styles/refinements.css` - brand mark, native-feeling mobile navigation, responsive fixes and the Stories presentation layer.
 - `styles/base.css` - resets, focus treatment, scrollbars, reduced-motion.
 - `styles/components.css` - the primitive vocabulary: buttons, fields,
   checkboxes, avatars, cards, badges, tabs, modals, toasts, empty states,
@@ -75,10 +76,24 @@ The old layout was a two-column sidebar. The new shell is three columns:
 - The **conversation panel** carries the participant header, the message
   history and the composer.
 
-On viewports narrower than 860px the rail is replaced by a compact top bar and
-the open conversation slides over the conversation list, with a back control
-in the header. The standalone pages (contacts, profile, settings) sit beside
-the rail so navigation never breaks.
+On viewports narrower than 860px the rail becomes a four-destination bottom
+navigation for chats, contacts, profile and settings. An open conversation uses
+the available full screen with a back control in its header; navigation returns
+to the persistent destination bar without hiding features on compact screens.
+
+### Stories
+
+`features/stories/components/StoriesStrip.jsx` loads the signed-in user's active
+stories and those of accepted friends. It supports text and image stories,
+automatic progress/advance, pause/resume, previous/next navigation, view
+tracking, owner-only viewer names and deletion. The REST service is described in
+`core/api/endpoints.js`.
+
+The backend stores stories in `Story`, authorizes reads and view events against
+friendship and block lists, accepts bounded Cloudinary image uploads, and
+expires content after 24 hours. Expired records are removed by
+`socket/storyExpiryWorker.js`; image assets are cleaned up before records are
+deleted, with failed cleanup retried on a later run.
 
 ### New pages and components
 
@@ -153,6 +168,10 @@ instead of surfacing later as a generic network error.
 
 ## Verification
 
+The results below are from the original frontend rewrite and predate the Stories
+addition. The current branch adds a mobile Stories browser test; rerun the suites
+with Chromium and an isolated MongoDB before release.
+
 | Check                            | Result                                        |
 | -------------------------------- | --------------------------------------------- |
 | `npm run lint`                   | Passed, no errors or warnings                  |
@@ -208,11 +227,9 @@ The rewrite also changes the sign-in path from `/auth` to `/signin`, with
 
 ## Notes and limits
 
-- The backend was not modified. The client matches the existing contract,
-  including the details that differ from a naive reading of the routes: a
-  friend request is addressed by `username` (not `receiverId`), a friend
-  response uses `action: "accept" | "reject"` (not `accept`), and a push
-  subscription is wrapped in a `subscription` property.
+- Existing auth, friend, chat, messaging and push contracts remain intact. The
+  only added API surface is `/api/stories`, with friend-scoped reads, image/text
+  creation, per-view tracking and author-only deletion.
 - Push notifications require VAPID keys on the backend. When they are absent
   the Settings screen says so instead of failing silently.
 - Avatar and media uploads require a configured Cloudinary account.

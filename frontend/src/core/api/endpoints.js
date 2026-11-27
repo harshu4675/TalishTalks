@@ -80,6 +80,27 @@ export const friendApi = {
   removeFriend: (friendId) => del(`/friends/${friendId}`),
 };
 
+/* ---------------------------------------------------------------- stories -- */
+
+export const storyApi = {
+  /** GET /api/stories - active stories from the signed-in user and friends. */
+  list: () => get("/stories"),
+
+  /** POST /api/stories - text and optional multipart image. */
+  create: ({ text, image }) => {
+    const body = new FormData();
+    if (text) body.append("text", text);
+    if (image) body.append("image", image);
+    return post("/stories", body, { headers: { "Content-Type": "multipart/form-data" } });
+  },
+
+  /** POST /api/stories/:storyId/view */
+  markViewed: (storyId) => post(`/stories/${storyId}/view`),
+
+  /** DELETE /api/stories/:storyId */
+  remove: (storyId) => del(`/stories/${storyId}`),
+};
+
 /* ------------------------------------------------------------------ chats -- */
 
 export const chatApi = {
@@ -168,6 +189,7 @@ export default {
   auth: authApi,
   users: userApi,
   friends: friendApi,
+  stories: storyApi,
   chats: chatApi,
   messages: messageApi,
   push: pushApi,

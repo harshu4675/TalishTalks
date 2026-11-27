@@ -3,6 +3,8 @@
  * optional presence indicator.
  */
 
+import { useEffect, useState } from "react";
+
 import { initialOf } from "../../core/utils/text.js";
 
 /**
@@ -24,11 +26,13 @@ export default function Avatar({
 }) {
   const showPresence = online || offline;
   const presenceClass = online ? "avatar__presence--online" : "avatar__presence--offline";
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => setImageFailed(false), [src]);
 
   return (
     <span className={`avatar avatar--${size} ${className}`.trim()} {...rest}>
-      {src ? (
-        <img src={src} alt={name ? `${name}'s avatar` : "Avatar"} loading="lazy" />
+      {src && !imageFailed ? (
+        <img src={src} alt={name ? `${name}'s avatar` : "Avatar"} loading="lazy" decoding="async" onError={() => setImageFailed(true)} />
       ) : (
         <span aria-hidden="true">{initialOf(name)}</span>
       )}

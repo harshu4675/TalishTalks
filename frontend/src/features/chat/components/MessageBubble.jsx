@@ -67,9 +67,9 @@ export default function MessageBubble({
           <span className="message__reply">
             <strong>{message.replyTo.sender?.fullName || "Message"}: </strong>
             {message.replyTo.messageType === "image"
-              ? "📷 Photo"
+              ? "Photo"
               : message.replyTo.messageType === "video"
-                ? "🎬 Video"
+                ? "Video"
                 : message.replyTo.content}
           </span>
         ) : null}
@@ -80,7 +80,7 @@ export default function MessageBubble({
         >
           {message.messageType === "image" && message.media?.url ? (
             <span className="message__media">
-              <img src={message.media.url} alt="Shared image" loading="lazy" />
+              <img src={message.media.url} alt="Shared image" loading="lazy" decoding="async" width={message.media.width || undefined} height={message.media.height || undefined} />
             </span>
           ) : null}
 

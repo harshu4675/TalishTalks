@@ -15,7 +15,9 @@ const sockets = [];
 const User = require("../models/User");
 const Message = require("../models/Message");
 const Chat = require("../models/Chat");
+const Story = require("../models/Story");
 const { runAutoDelete } = require("../socket/autoDeleteWorker");
+const { runStoryExpiry } = require("../socket/storyExpiryWorker");
 
 const freePort = () => new Promise((resolve, reject) => {
   const probe = net.createServer();
@@ -58,7 +60,7 @@ before(async () => {
   await mongoose.connect(process.env.MONGODB_URI);
   // This connection is established only after the explicit test-binary/URI guard above.
   await mongoose.connection.db.dropDatabase();
-  await Promise.all([User.init(), Chat.init(), Message.init()]);
+  await Promise.all([User.init(), Chat.init(), Message.init(), Story.init()]);
   ({ app, server, io } = require("../app")());
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${server.address().port}/api`;
@@ -109,6 +111,37 @@ const socketFor = async (account) => {
   await waitFor(() => socket.connected);
   return { socket, events };
 };
+
+test("stories are friend-scoped, expire, track views, and allow only the author to delete", async () => {
+  const created = await request("POST", "/stories", alice, { text: "A real story shared with friends" });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const storyId = created.body.story._id;
+  assert.equal(new Date(created.body.story.expiresAt).getTime() - new Date(created.body.story.createdAt).getTime(), 24 * 60 * 60 * 1000);
+  assert.equal((await request("POST", "/stories", alice, { text: "   " })).status, 400);
+  assert.equal((await request("POST", "/stories", alice, { text: "x".repeat(501) })).status, 400);
+  const friendFeed = await request("GET", "/stories", bob);
+  assert.equal(friendFeed.status, 200);
+  assert(friendFeed.body.stories.some((group) => group.stories.some((story) => story._id === storyId)));
+  const outsiderFeed = await request("GET", "/stories", stranger);
+  assert.equal(outsiderFeed.status, 200);
+  assert.equal(outsiderFeed.body.stories.length, 0);
+  assert.equal((await request("POST", `/stories/${storyId}/view`, stranger)).status, 404);
+  assert.equal((await request("POST", `/stories/${storyId}/view`, bob)).status, 200);
+  assert.equal((await request("POST", `/stories/${storyId}/view`, bob)).status, 200);
+  const ownerFeed = await request("GET", "/stories", alice);
+  const ownStory = ownerFeed.body.stories.flatMap((group) => group.stories).find((story) => story._id === storyId);
+  assert.equal(ownStory.viewerCount, 1);
+  assert.equal(ownStory.viewers[0].user.username, "bob_test");
+  assert.equal((await request("DELETE", `/stories/${storyId}`, bob)).status, 404);
+  assert.equal((await request("DELETE", `/stories/${storyId}`, alice)).status, 200);
+  assert.equal(await Story.countDocuments({ _id: storyId }), 0);
+
+  const expired = await Story.create({ author: alice.user._id, text: "Expired", expiresAt: new Date(Date.now() - 1000) });
+  const afterExpiry = await request("GET", "/stories", bob);
+  assert.equal(afterExpiry.body.stories.some((group) => group.stories.some((story) => story._id === String(expired._id))), false);
+  await runStoryExpiry();
+  assert.equal(await Story.countDocuments({ _id: expired._id }), 0);
+});
 
 test("authentication, friendship and conversation membership are enforced", async () => {
   assert.equal((await request("GET", "/auth/me")).status, 401);

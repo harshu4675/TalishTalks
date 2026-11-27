@@ -49,6 +49,7 @@ const createApp = () => {
   app.use("/api/auth", (req, res, next) => ["login", "register"].includes(req.path.slice(1)) ? authLimiter(req, res, next) : next(), require("./routes/authRoutes"));
   app.use("/api/users", require("./routes/userRoutes"));
   app.use("/api/friends", require("./routes/friendRoutes"));
+  app.use("/api/stories", require("./routes/storyRoutes"));
   app.use("/api/chats", require("./routes/chatRoutes"));
   app.use("/api/messages", require("./routes/messageRoutes"));
   app.use("/api/push", require("./routes/pushRoutes"));

@@ -28,8 +28,8 @@ export const messagePreview = (message, viewerId) => {
     ? "You: "
     : "";
 
-  if (message.messageType === "image") return `${prefix}📷 Photo`;
-  if (message.messageType === "video") return `${prefix}🎬 Video`;
+  if (message.messageType === "image") return `${prefix}Photo`;
+  if (message.messageType === "video") return `${prefix}Video`;
 
   const content = (message.content || "").trim();
   if (!content) return `${prefix}Attachment`;
