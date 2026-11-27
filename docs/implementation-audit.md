@@ -1,5 +1,10 @@
 # Talish Talks implementation audit
 
+> **Note.** This document records the original audit and hardening pass. The
+> frontend has since been rewritten end to end - see
+> [`frontend-rewrite.md`](./frontend-rewrite.md). The backend sections below
+> remain current; the frontend sections describe the previous interface.
+
 ## Scope and baseline
 
 Audited and modified the existing React frontend and Express/Mongoose/Socket.IO backend, starting from commit `0cb4261`. Existing account, friend, conversation, message, media, lock, notification and PWA contracts were retained. No production database or production account was used.
@@ -51,7 +56,7 @@ All runs used Node 22.22.3, an isolated MongoDB 8.0.26 test server and Chromium.
 | Check | Result |
 | --- | --- |
 | Backend integration suite | **17/17 passed** |
-| Two-user Playwright suite | **7/7 passed** |
+| Two-user Playwright suite | **7/7 passed** (superseded: the rewritten frontend ships **17/17**) |
 | Frontend ESLint, including tests/config | **Passed, no warnings** |
 | Production frontend + PWA build | **Passed, no chunk-size warning** |
 | Backend JavaScript syntax checks | **Passed** |
@@ -130,9 +135,17 @@ Backend variables are documented in `backend/.env.example`:
 Frontend variables are documented in `frontend/.env.example`:
 
 - `VITE_API_URL`, `VITE_SOCKET_URL`: empty for same-origin/Vite proxy; explicit URLs for separate hosting.
-- `VITE_VAPID_PUBLIC_KEY`: public key matching the backend.
-- `VITE_APP_URL`: optional public invitation URL.
+- `VITE_APP_NAME`, `VITE_MAX_MESSAGE_LENGTH`, `VITE_SEARCH_DEBOUNCE_MS`: presentation and messaging limits.
+- `VITE_ENABLE_PUSH_NOTIFICATIONS`, `VITE_ENABLE_OFFLINE_MODE`: feature flags.
 - `PLAYWRIGHT_BASE_URL`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`: browser-test configuration.
+
+The frontend was subsequently rewritten end to end. See
+[`frontend-rewrite.md`](./frontend-rewrite.md) for the new design system, the
+replacement authentication implementation, the new application shell and the
+verification results of the rewrite. The variables above are the ones that
+remain relevant to deployment; `VITE_VAPID_PUBLIC_KEY` and `VITE_APP_URL`
+were removed because the rewritten client reads the push public key from the
+backend (`GET /api/push/vapid-key`) instead of duplicating it in the build.
 
 Frontend variables are embedded at build time. Keep the existing Netlify publish directory `frontend/dist` and build command `cd frontend && npm ci && npm run build`; retain SPA fallback to `index.html`. Configure the backend host separately with WebSocket support, HTTPS, exact frontend origins and the same environment names. The backend assumes one trusted proxy hop; align that setting with the actual deployment topology before exposing it publicly.
 

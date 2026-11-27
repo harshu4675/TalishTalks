@@ -1,31 +1,60 @@
-import { precacheAndRoute, cleanupOutdatedCaches, getCacheKeyForURL } from "workbox-precaching";
-precacheAndRoute(self.__WB_MANIFEST);
+/*
+ * Talish Talks - service worker
+ * ---------------------------------------------------------------------------
+ * Precaches the application shell so the app opens instantly and keeps
+ * working on a flaky connection.
+ *
+ * Two things are deliberately never cached:
+ *   - `/api/*`      API responses must always come from the server.
+ *   - `/socket.io`  the realtime transport must never be intercepted.
+ */
+
+import { clientsClaim } from "workbox-core";
+import {
+  cleanupOutdatedCaches,
+  matchPrecache,
+  precacheAndRoute,
+} from "workbox-precaching";
+import { NavigationRoute, registerRoute } from "workbox-routing";
+
+clientsClaim();
 cleanupOutdatedCaches();
-self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-  if (event.request.mode !== "navigate" || url.origin !== self.location.origin || /^\/(api|socket.io)\//.test(url.pathname)) return;
-  event.respondWith(fetch(event.request).catch(async () => {
-    const key = getCacheKeyForURL("/index.html");
-    return (key && await caches.match(key)) || Response.error();
-  }));
-});
-self.addEventListener("message", (event) => { if (event.data?.type === "SKIP_WAITING") self.skipWaiting(); });
-self.addEventListener("push", (event) => {
-  let data = {};
-  try { data = event.data?.json() || {}; } catch { data = { body: event.data?.text() || "You have a new notification" }; }
-  event.waitUntil(self.registration.showNotification(data.title || "Talish Talks", {
-    body: data.body || "You have a new notification", icon: "/pwa-192x192.png", badge: "/pwa-192x192.png",
-    tag: data.tag || "talish-notification", data: data.data || {}, renotify: true,
-  }));
-});
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  const target = new URL(event.notification.data?.url || "/", self.location.origin);
-  const url = target.origin === self.location.origin ? target.href : `${self.location.origin}/`;
-  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
-    const client = clients.find((item) => item.url.startsWith(self.location.origin));
-    if (client) { await client.navigate(url); return client.focus(); }
-    return self.clients.openWindow(url);
-  }));
-});
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+precacheAndRoute(self.__WB_MANIFEST);
+
+/**
+ * Bypass the cache entirely for live traffic so a stale response can never
+ * break authentication or messaging.
+ */
+const isLiveRequest = (url) =>
+  url.pathname.startsWith("/api") ||
+  url.pathname.startsWith("/socket.io") ||
+  url.pathname.startsWith("/socket.io/");
+
+/**
+ * Navigations are served from the network when possible and fall back to the
+ * precached application shell when the device is offline.
+ */
+registerRoute(
+  new NavigationRoute(
+    async ({ request }) => {
+      try {
+        return await fetch(request);
+      } catch {
+        const shell = await matchPrecache("/index.html");
+        return shell ?? Response.error();
+      }
+    },
+    {
+      denylist: [/^\/api\//, /^\/socket\.io\//],
+    },
+  ),
+);
+
+/**
+ * Live traffic is never served from a cache.
+ */
+registerRoute(
+  ({ url }) => isLiveRequest(url),
+  async ({ request }) => fetch(request),
+  "GET",
+);
