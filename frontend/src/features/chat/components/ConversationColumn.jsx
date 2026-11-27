@@ -17,6 +17,7 @@ import Button from "../../../shared/components/Button.jsx";
 import { EmptyState, Skeleton } from "../../../shared/components/Feedback.jsx";
 import { Input } from "../../../shared/components/Field.jsx";
 import ConversationRow from "./ConversationRow.jsx";
+import StoriesStrip from "../../stories/components/StoriesStrip.jsx";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -88,6 +89,8 @@ export default function ConversationColumn({ activeChatId, onSelectChat, onNewCh
           data-testid="conversation-search"
         />
       </div>
+
+      <StoriesStrip />
 
       <div className="column__filters" role="tablist" aria-label="Filter conversations">
         {FILTERS.map((item) => (

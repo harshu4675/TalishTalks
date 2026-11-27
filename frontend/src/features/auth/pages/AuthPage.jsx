@@ -11,7 +11,7 @@ import { FiLock, FiMessageCircle, FiShield, FiZap } from "react-icons/fi";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../../core/auth/useAuth.js";
-import { Logo } from "../../../shared/components/Feedback.jsx";
+import { LoadingScreen, Logo } from "../../../shared/components/Feedback.jsx";
 import SignInForm from "../components/SignInForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
 
@@ -42,18 +42,7 @@ export default function AuthPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  if (isInitialising) {
-    return (
-      <div className="auth-canvas">
-        <div className="auth-card" style={{ maxWidth: 420, textAlign: "center" }}>
-          <Logo size={26} withWordmark />
-          <p style={{ marginTop: "var(--space-4)", color: "var(--text-secondary)" }}>
-            Restoring your session…
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (isInitialising) return <LoadingScreen label="Restoring your session" />;
 
   if (isAuthenticated) {
     return <Navigate to={location.state?.from || "/"} replace />;

@@ -130,9 +130,9 @@ export default function MessageComposer({
             </p>
             <p className="truncate">
               {replyTo.messageType === "image"
-                ? "📷 Photo"
+                ? "Photo"
                 : replyTo.messageType === "video"
-                  ? "🎬 Video"
+                  ? "Video"
                   : replyTo.content}
             </p>
           </div>

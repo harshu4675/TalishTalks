@@ -46,6 +46,8 @@ export default function ContactsPage() {
     requests,
     directory,
     isLoading,
+    error: contactsError,
+    refresh: refreshContacts,
     isSearching,
     pendingCount,
     sendRequest,
@@ -93,6 +95,7 @@ export default function ContactsPage() {
       subtitle="Manage the people you talk to, handle incoming requests and discover new people by name or username."
     >
       <>
+        {contactsError ? <div className="callout callout--warning" role="alert"><span>{contactsError}</span><Button variant="secondary" size="sm" onClick={refreshContacts}>Retry</Button></div> : null}
         <div className="tabs" role="tablist" aria-label="Contact sections" style={{ maxWidth: 460 }}>
           {TABS.map((item) => (
             <button

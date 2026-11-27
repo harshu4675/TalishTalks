@@ -53,29 +53,27 @@ export function Skeleton({ width = "100%", height = 12, radius, circle = false, 
 /** The product mark used in the rail, the auth page and the tab title. */
 export function Logo({ size = 22, withWordmark = false, wordmark = "Talish Talks" }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-3)" }}>
-      <span
-        className="rail__brand"
-        style={{
-          width: size + 20,
-          height: size + 20,
-          margin: 0,
-          borderRadius: "var(--radius-md)",
-        }}
-        aria-hidden="true"
-      >
-        <svg width={size} height={22} viewBox="0 0 24 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M12 2C6.48 2 2 5.94 2 10.72c0 2.77 1.45 5.24 3.72 6.85-.16.62-.72 2.3-1.87 3.46 2.2-.18 4.03-1.05 5.05-1.83.99.2 2.04.3 3.1.3 5.52 0 10-3.94 10-8.78C22 5.94 17.52 2 12 2Z"
-            fill="currentColor"
-          />
-          <circle cx="8.2" cy="10.4" r="1.5" fill="var(--brand-700)" />
-          <circle cx="15.8" cy="10.4" r="1.5" fill="var(--brand-700)" />
+    <span className="brand-lockup">
+      <span className="brand-mark" style={{ width: size + 20, height: size + 20 }} aria-hidden="true">
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 6.5C5 4.57 6.57 3 8.5 3h14C24.43 3 26 4.57 26 6.5v10c0 1.93-1.57 3.5-3.5 3.5H15l-5.5 5v-5H8.5C6.57 20 5 18.43 5 16.5v-10Z" fill="currentColor" />
+          <circle cx="11" cy="11.5" r="1.35" fill="var(--surface-raised)" />
+          <circle cx="16" cy="11.5" r="1.35" fill="var(--surface-raised)" />
+          <circle cx="21" cy="11.5" r="1.35" fill="var(--surface-raised)" />
+          <path d="M20 22.5h4.7c1.27 0 2.3-1.03 2.3-2.3v-3.7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         </svg>
       </span>
       {withWordmark ? <span className="auth-pitch__wordmark">{wordmark}</span> : null}
     </span>
   );
+}
+
+export function LoadingScreen({ label = "Loading Talish Talks" }) {
+  return <main className="app-loader" role="status" aria-label={label}>
+    <Logo size={26} withWordmark />
+    <Spinner />
+    <span>{label}</span>
+  </main>;
 }
 
 export default Spinner;

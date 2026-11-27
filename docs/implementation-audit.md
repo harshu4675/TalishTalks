@@ -3,7 +3,8 @@
 > **Note.** This document records the original audit and hardening pass. The
 > frontend has since been rewritten end to end - see
 > [`frontend-rewrite.md`](./frontend-rewrite.md). The backend sections below
-> remain current; the frontend sections describe the previous interface.
+> remain current except for the later Stories API addition; the frontend
+> sections describe the previous interface.
 
 ## Scope and baseline
 

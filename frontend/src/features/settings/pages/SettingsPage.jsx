@@ -19,6 +19,7 @@ import Avatar from "../../../shared/components/Avatar.jsx";
 import Button from "../../../shared/components/Button.jsx";
 import ConfirmDialog from "../../../shared/components/ConfirmDialog.jsx";
 import { useToast } from "../../../shared/components/useToast.js";
+import { Skeleton } from "../../../shared/components/Feedback.jsx";
 
 /**
  * The settings screen.
@@ -31,6 +32,9 @@ export default function SettingsPage() {
 
   const [pushState, setPushState] = useState({ supported: false, enabled: false, available: false });
   const [blockedUsers, setBlockedUsers] = useState([]);
+  const [blockedUsersLoading, setBlockedUsersLoading] = useState(true);
+  const [blockedUsersError, setBlockedUsersError] = useState("");
+  const [preferencesLoading, setPreferencesLoading] = useState(true);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
@@ -45,6 +49,15 @@ export default function SettingsPage() {
         "Notification" in window;
 
       if (!cancelled) setPushState((current) => ({ ...current, supported }));
+      if (supported) {
+        try {
+          const registration = await navigator.serviceWorker.getRegistration();
+          const subscription = await registration?.pushManager.getSubscription();
+          if (!cancelled) setPushState((current) => ({ ...current, enabled: Boolean(subscription) }));
+        } catch {
+          if (!cancelled) setPushState((current) => ({ ...current, enabled: false }));
+        }
+      }
 
       try {
         const data = await pushApi.vapidKey();
@@ -55,13 +68,20 @@ export default function SettingsPage() {
         }));
       } catch {
         if (!cancelled) setPushState((current) => ({ ...current, available: false }));
+      } finally {
+        if (!cancelled) setPreferencesLoading(false);
       }
 
       try {
         const data = await userApi.blocked();
-        if (!cancelled) setBlockedUsers(data.blockedUsers || []);
-      } catch {
-        /* the list is optional */
+        if (!cancelled) {
+          setBlockedUsers(data.blockedUsers || []);
+          setBlockedUsersError("");
+        }
+      } catch (error) {
+        if (!cancelled) setBlockedUsersError(error.message || "Could not load blocked people.");
+      } finally {
+        if (!cancelled) setBlockedUsersLoading(false);
       }
     };
 
@@ -176,7 +196,8 @@ export default function SettingsPage() {
                 variant={pushState.enabled ? "secondary" : "primary"}
                 size="sm"
                 onClick={togglePush}
-                disabled={!config.pushEnabled}
+                disabled={!config.pushEnabled || preferencesLoading}
+                loading={preferencesLoading}
               >
                 {pushState.enabled ? "Turn off" : "Turn on"}
               </Button>
@@ -203,7 +224,13 @@ export default function SettingsPage() {
           <div className="card__body" style={{ display: "grid", gap: "var(--space-4)" }}>
             <div>
               <p style={{ fontWeight: "var(--weight-semibold)" }}>Blocked people</p>
-              {blockedUsers.length === 0 ? (
+              {blockedUsersLoading ? (
+                <div style={{ display: "grid", gap: "var(--space-3)", marginTop: "var(--space-3)" }} aria-label="Loading blocked people">
+                  {[0, 1].map((index) => <div key={index} style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}><Skeleton width={36} height={36} circle /><Skeleton width="55%" height={12} /></div>)}
+                </div>
+              ) : blockedUsersError ? (
+                <p role="status" style={{ color: "var(--text-secondary)", fontSize: "var(--text-sm)" }}>{blockedUsersError}</p>
+              ) : blockedUsers.length === 0 ? (
                 <p style={{ color: "var(--text-tertiary)", fontSize: "var(--text-sm)" }}>
                   You have not blocked anyone.
                 </p>
