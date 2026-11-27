@@ -160,6 +160,7 @@ instead of surfacing later as a generic network error.
 | Playwright browser suite         | **17/17 passed**                               |
 | Backend integration suite        | **17/17 passed** (unchanged)                   |
 | Production PWA smoke             | **Passed** - worker registers and controls the page, the manifest and icons resolve, and an offline navigation to `/settings` is served from the precached shell |
+| Netlify deploy preview          | **Passed** - the build deploys, the manifest resolves, and the SPA fallback serves `/contacts` and `/chat/:chatId` with the application shell |
 
 The browser suite drives two real browsers against a real backend:
 
